@@ -21,21 +21,25 @@ This repository holds the full Docker Compose configuration of my Homelab (Debia
 ### Structure
 
 ```
-Docker Compose/                  <- git repo "docker-compose" (monorepo)
+Docker Compose/                  <- git repo (monorepo)
 ├── global.env.example           <- shared variables template
 ├── .gitignore                   <- excludes global.env, .env, data
 ├── README.md
-├── Git/                         <- Forgejo service
-│   ├── docker-compose.yml
-│   ├── .env.example             <- template (versioned)
-│   └── .env                     <- real credentials (NOT versioned)
+├── Git/
+│   ├── Forgejo/                 <- Forgejo service (canonical)
+│   │   ├── docker-compose.yml
+│   │   ├── .env.example         <- template (versioned)
+│   │   └── .env                 <- real credentials (NOT versioned)
+│   └── Gitea/                   <- legacy (kept for reference)
+│       ├── docker-compose.yml
+│       └── .env.example
 └── <AnotherService>/
     ├── docker-compose.yml
     └── .env.example
 ```
 
 - **Code** (compose): in this repo.
-- **Data** (repos, DBs, uploads): in the paths defined by the variables (e.g. `/home/akuilera/Documentos/Containers/<service>/`). Data is NOT versioned.
+- **Data** (repos, DBs, uploads): in the paths defined by the variables (`PATH_TO_CONTAINERS` / `DISK_UUID_PATH` in `global.env`). Data is NOT versioned.
 
 ### Workflow
 
@@ -48,12 +52,39 @@ Portainer is the primary management tool. Each service is a `docker-compose.yml`
    git commit -m "description of the change"
    git push origin main
    ```
-   > **Dual push**: every change is also pushed to the GitHub mirror (the bootstrap/DR source for Forgejo's own deployment), so the mirror never lags behind.
+   > **Dual push**: `origin` has two push URLs (Forgejo + the GitHub mirror), so a single `git push origin main` updates both. The mirror never lags behind and is the bootstrap/DR source for Forgejo's own deployment.
+   >
+   > From the laptop, **Gittyup** is the client: one **Push** does the same dual push (origin targets both hosts).
 3. **Deploy**: in Portainer, open the service's stack → **Update** (pull latest and redeploy), or enable the stack **webhook** to redeploy automatically on every push.
 4. **Portainer** is used for everything: creating/deploying stacks from the repo, updating them, and viewing logs.
 5. The laptop and the server working copies stay in sync **via git** (`pull` / `push`).
 
-> **Initial bootstrap**: Portainer (the management UI itself) is deployed once from the server CLI with `docker compose up -d`, because it cannot pull its own repo as a stack. Forgejo (the git host) is the only service deployed by Portainer from the **GitHub mirror** instead of from Forgejo itself, to avoid the chicken-and-egg problem; that mirror is the bootstrap/DR source, so Forgejo's stack keeps working even if Forgejo goes down. Every other service is deployed as a Repository stack from Forgejo.
+> **Initial bootstrap**: Portainer (the management UI itself) is deployed once from the server CLI with `docker compose up -d`, because it cannot pull its own repo as a stack. Forgejo (the git host) is the only service deployed by Portainer from the **GitHub mirror** (`Git/Forgejo/docker-compose.yml`) instead of from Forgejo itself, to avoid the chicken-and-egg problem: Forgejo's own compose cannot be fetched from Forgejo while Forgejo is down, but the mirror is always reachable. Every other service is deployed as a Repository stack from Forgejo.
+
+### Remotes
+
+The canonical host is **Forgejo**. GitHub is a **read-only DR mirror**: its only role is to let Portainer redeploy Forgejo if Forgejo is down. Nobody pushes directly to GitHub except the dual push below.
+
+```
+origin   Forgejo (canonical) — fetch + push
+         push also targets the GitHub mirror (dual push)
+lan      Forgejo via the LAN/ZeroTier route — fallback when the public route is down
+mirror   GitHub — DR / bootstrap only
+```
+
+- Daily work uses only `origin`: a single `git push` updates both Forgejo and the mirror.
+- `lan` is a fallback route when the public one is unreachable; `mirror` is reserved for DR.
+
+### Disaster recovery (DR)
+
+If Forgejo dies, the repo is still recoverable because every change was also pushed to the GitHub mirror:
+
+1. In Portainer, deploy/redeploy the Forgejo stack from the mirror at `Git/Forgejo/docker-compose.yml`.
+2. Set the same environment variables as before (`USER_UID`, `USER_GID`, `MYSQL_*`, `PATH_TO_CONTAINERS`).
+3. Restore the Forgejo data volume (repos, DB) from your server backups — data is never in the repo.
+4. Verify the recovered history: canonical history lives on `main`; the pre-migration history is archived on the `pre-migration` branch of the mirror.
+
+> The `.env` files needed to deploy live on the laptop/server and are never versioned. Back them up together with the data.
 
 ### Networks
 
