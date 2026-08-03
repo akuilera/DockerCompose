@@ -48,11 +48,12 @@ Portainer is the primary management tool. Each service is a `docker-compose.yml`
    git commit -m "description of the change"
    git push origin main
    ```
+   > **Dual push**: every change is also pushed to the GitHub mirror (the bootstrap/DR source for Forgejo's own deployment), so the mirror never lags behind.
 3. **Deploy**: in Portainer, open the service's stack → **Update** (pull latest and redeploy), or enable the stack **webhook** to redeploy automatically on every push.
 4. **Portainer** is used for everything: creating/deploying stacks from the repo, updating them, and viewing logs.
 5. The laptop and the server working copies stay in sync **via git** (`pull` / `push`).
 
-> **Initial bootstrap**: the very first deployment of Forgejo (the git host itself) is done once from the server CLI with `docker compose up -d` inside `Git/Forgejo/`, because Portainer needs a hosted repo URL to pull from. After that, Portainer manages Forgejo like any other service.
+> **Initial bootstrap**: Portainer (the management UI itself) is deployed once from the server CLI with `docker compose up -d`, because it cannot pull its own repo as a stack. Forgejo (the git host) is the only service deployed by Portainer from the **GitHub mirror** instead of from Forgejo itself, to avoid the chicken-and-egg problem; that mirror is the bootstrap/DR source, so Forgejo's stack keeps working even if Forgejo goes down. Every other service is deployed as a Repository stack from Forgejo.
 
 ### Networks
 
@@ -63,6 +64,7 @@ Portainer is the primary management tool. Each service is a `docker-compose.yml`
   - **immich-net**: Immich + Immich Postgres + Immich Redis + NGINX Proxy Manager
   - **heimdall-net**: Heimdall
   - **files-net**: Filebrowser + Samba + Syncthing
+  - **fmd-net**: FindMyDevice
   - **media-download-net**: Jackett + Transmission + Emby
   - **media-net**: Jellyfin
   - **apps-net**: OpenSpeedTest + Portainer + NGINX Proxy Manager
@@ -89,6 +91,10 @@ docker network create --driver bridge isolated_2
 ### 🚫 .gitignore
 
 Sensitive files (`global.env`, `.env`, databases and configuration folders) are excluded to protect your information.
+
+## ⚖️ License
+
+This repository is licensed under the [MIT License](LICENSE). © 2026 Akuilera. You may use, copy, modify and redistribute it with attribution; the software is provided "as is", without warranty of any kind.
 
 ## 📖 About
 
