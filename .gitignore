@@ -1,9 +1,9 @@
-# Secretos y archivos locales
+# Secrets and local files
 .env
 global.env
 *.log
 
-# Sistemas operativos
+# Operating systems
 .DS_Store
 Thumbs.db
 

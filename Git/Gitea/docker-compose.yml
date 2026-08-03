@@ -1,18 +1,13 @@
 services:
   server:
-    image: codeberg.org/forgejo/forgejo:16
-    container_name: forgejo
+    # image: docker.gitea.com/gitea:1.26.1
+    image: docker.gitea.com/gitea:latest
+    container_name: gitea
     environment:
       - USER_UID=${USER_UID}
       - USER_GID=${USER_GID}
-      - FORGEJO__database__DB_TYPE=mysql
-      - FORGEJO__database__HOST=mariadb
-      - FORGEJO__database__NAME=${MYSQL_DATABASE}
-      - FORGEJO__database__USER=${MYSQL_USER}
-      - FORGEJO__database__PASSWD=${MYSQL_PASS}
-      - FORGEJO__server__SSH_PORT=222
-      # Prefijo GITEA__ de compatibilidad (recomendado por Forgejo):
       - GITEA__database__DB_TYPE=mysql
+      # - GITEA__database__HOST=db-net:3306
       - GITEA__database__HOST=mariadb
       - GITEA__database__NAME=${MYSQL_DATABASE}
       - GITEA__database__USER=${MYSQL_USER}
@@ -22,12 +17,27 @@ services:
     networks:
       - db-net
     volumes:
-      - ${PATH_TO_CONTAINERS}/Forgejo:/data
+      - ${PATH_TO_CONTAINERS}/Gitea:/data
       - /etc/timezone:/etc/timezone:ro
       - /etc/localtime:/etc/localtime:ro
     ports:
       - "3000:3000"
       - "222:22"
+    # depends_on:
+    #   - db
+
+  # db:
+  #   image: docker.io/library/mysql:8
+  #   restart: always
+  #   environment:
+  #     - MYSQL_ROOT_PASSWORD=gitea
+  #     - MYSQL_USER=gitea
+  #     - MYSQL_PASSWORD=gitea
+  #     - MYSQL_DATABASE=gitea
+  #   networks:
+  #     - gitea
+  #   volumes:
+  #     - ./mysql:/var/lib/mysql
 
 networks:
   db-net:
