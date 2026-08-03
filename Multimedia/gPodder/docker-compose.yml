@@ -1,0 +1,36 @@
+# services:
+#   gpodder2go:
+#     # image: dontobi/gpodder2go:latest
+#     image: ghcr.io/oxtyped/gpodder2go:main
+#     # image: quay.io/mhrivnak/gpodder2go-container # NO USAR. NO SÈ SI ES SEGURA
+#     container_name: gPodder
+#     ports:
+#       - 3005:3005
+#       # - 3000:3000
+#       # - 3000:3005
+#       # - 3000:401
+#       # - 3000:8080
+#       # - 3000:8000
+#       # - 3000:3000
+#     environment:
+#       - NO_AUTH=true
+#       # - NO_AUTH=false
+#     volumes:
+#       - ${PATH_TO_CONTAINERS}/gPodder:/data
+#     restart: unless-stopped
+
+services:
+  gpodder:
+    image: xthursdayx/gpodder-docker
+    container_name: gPodder
+    environment:
+      - PUID=${PUID}
+      - PGID=${PGID}
+      - TZ=Europe/Berlin
+      - PASSWORD=${PASSWORD} #optional
+    volumes:
+      - ${PATH_TO_CONTAINERS}/gPodder:/config
+      - ${PATH_TO_DOWNLOADS}:/downloads
+    ports:
+      - 3000:3000
+    restart: unless-stopped

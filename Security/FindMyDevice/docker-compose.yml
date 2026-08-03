@@ -1,7 +1,7 @@
 services:
   fmd:
     # Use the prebuilt image
-    image: registry.gitlab.com/fmd-foss/fmd-server:0.14.0
+    image: registry.gitlab.com/fmd-foss/fmd-server:0.16.0
     # Or build the image yourself (note the leading 'v')
     # build: https://gitlab.com/fmd-foss/fmd-server.git#v0.14.0
     container_name: fmd
