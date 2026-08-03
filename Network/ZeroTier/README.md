@@ -27,3 +27,7 @@ Then take the container down and up like this:
 ```
 
 🤷‍♂️
+
+## Role in the Homelab
+
+ZeroTier provides the network route to the server (the `lan` route / URL access from the laptop). It is part of the chicken-and-egg bootstrap: without a URL you cannot reach Forgejo, and that URL requires ZeroTier + **NGINX Proxy Manager**. ZeroTier has no DB dependency of its own — start it right after MariaDB (see the repo root README → Boot order).

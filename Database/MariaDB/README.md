@@ -75,3 +75,15 @@ If the database was previously created with the wrong collation, fix it with:
 ```sql
 ALTER DATABASE forgejo CHARACTER SET utf8mb4 COLLATE utf8mb4_bin;
 ```
+
+## Boot order
+
+MariaDB is the base of the whole Homelab: both **NGINX Proxy Manager** (its backend DB) and **Forgejo** depend on it. On a cold start (reboot, power loss, DR) it must be the first service up:
+
+```bash
+docker compose up -d   # Database/MariaDB/  (this one, first)
+docker compose up -d   # Network/ZeroTier/ + Network/NGINX-Proxy-Manager/
+docker compose up -d   # Git/Forgejo/ and the rest
+```
+
+Part of the chicken-and-egg bootstrap: NPM is what makes Forgejo reachable by URL, and NPM does not start without this database.

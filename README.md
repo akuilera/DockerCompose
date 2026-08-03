@@ -60,6 +60,18 @@ Portainer is the primary management tool. Each service is a `docker-compose.yml`
 5. The laptop and the server working copies stay in sync **via git** (`pull` / `push`).
 
 > **Initial bootstrap**: Portainer (the management UI itself) is deployed once from the server CLI with `docker compose up -d`, because it cannot pull its own repo as a stack. Forgejo (the git host) is the only service deployed by Portainer from the **GitHub mirror** (`Git/Forgejo/docker-compose.yml`) instead of from Forgejo itself, to avoid the chicken-and-egg problem: Forgejo's own compose cannot be fetched from Forgejo while Forgejo is down, but the mirror is always reachable. Every other service is deployed as a Repository stack from Forgejo.
+>
+> The chicken-and-egg does not end there: reaching Forgejo by URL also requires **NGINX Proxy Manager** (reverse proxy) + **ZeroTier** (network route to the server), and NPM needs **MariaDB** to run (its backend DB) — the same MariaDB that hosts Forgejo's own database. See [Boot order / Dependencies](#boot-order--dependencies).
+
+### Boot order / Dependencies
+
+Reaching Forgejo by URL is itself a chicken-and-egg problem: a reachable URL requires **NGINX Proxy Manager** (reverse proxy) + **ZeroTier** (network route to the server), and NPM cannot start without **MariaDB** (its backend database, `DB_MYSQL_HOST: mariadb`). MariaDB also hosts Forgejo's own database. So on a cold start (reboot, power loss, DR) the chain is:
+
+1. **MariaDB** (+ `redis`) — first; everything below depends on it.
+2. **ZeroTier** + **NGINX Proxy Manager** — the network route and the URL layer.
+3. **Forgejo** and the rest of the services — deployable and reachable from here on.
+
+`restart: always` / `restart: unless-stopped` bring every container back automatically after a reboot, but on a cold start MariaDB must come up first, or NPM (and Forgejo) will fail to connect to its database.
 
 ### Remotes
 
