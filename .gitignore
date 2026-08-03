@@ -1,0 +1,13 @@
+# Secretos y archivos locales
+.env
+global.env
+*.log
+
+# Sistemas operativos
+.DS_Store
+Thumbs.db
+
+# Editor
+*.swp
+.idea/
+.vscode/

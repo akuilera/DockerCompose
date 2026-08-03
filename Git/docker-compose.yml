@@ -1,0 +1,35 @@
+services:
+  server:
+    image: codeberg.org/forgejo/forgejo:16
+    container_name: forgejo
+    environment:
+      - USER_UID=${USER_UID}
+      - USER_GID=${USER_GID}
+      - FORGEJO__database__DB_TYPE=mysql
+      - FORGEJO__database__HOST=mariadb
+      - FORGEJO__database__NAME=${MYSQL_DATABASE}
+      - FORGEJO__database__USER=${MYSQL_USER}
+      - FORGEJO__database__PASSWD=${MYSQL_PASS}
+      - FORGEJO__server__SSH_PORT=222
+      # Prefijo GITEA__ de compatibilidad (recomendado por Forgejo):
+      - GITEA__database__DB_TYPE=mysql
+      - GITEA__database__HOST=mariadb
+      - GITEA__database__NAME=${MYSQL_DATABASE}
+      - GITEA__database__USER=${MYSQL_USER}
+      - GITEA__database__PASSWD=${MYSQL_PASS}
+      - GITEA__server__SSH_PORT=222
+    restart: always
+    networks:
+      - db-net
+    volumes:
+      - ${PATH_TO_CONTAINERS}/Forgejo:/data
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/localtime:/etc/localtime:ro
+    ports:
+      - "3000:3000"
+      - "222:22"
+
+networks:
+  db-net:
+    external: true
+    name: db-net
