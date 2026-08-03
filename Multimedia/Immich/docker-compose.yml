@@ -19,6 +19,8 @@ services:
     volumes:
       # Do not edit the next line. If you want to change the media storage location on your system, edit the value of UPLOAD_LOCATION in the .env file
       - ${UPLOAD_LOCATION}:/data
+      - ${IMAGES_PATH}:/mnt_img
+      - ${VIDEOS_PATH}:/mnt_vid
       - /etc/localtime:/etc/localtime:ro
     env_file:
       - stack.env
@@ -27,9 +29,12 @@ services:
     depends_on:
       - redis
       - database
-    restart: always
+    restart: unless-stopped
+    # restart: always
     healthcheck:
       disable: false
+    networks:
+      - immich-net
 
   immich-machine-learning:
     container_name: immich_machine_learning
@@ -43,16 +48,22 @@ services:
       - ${PATH_TO_CONTAINERS}/Immich/model-cache:/cache
     env_file:
       - stack.env
-    restart: always
+    restart: unless-stopped
+    # restart: always
     healthcheck:
       disable: false
+    networks:
+      - immich-net
 
   redis:
     container_name: immich_redis
-    image: docker.io/valkey/valkey:8@sha256:81db6d39e1bba3b3ff32bd3a1b19a6d69690f94a3954ec131277b9a26b95b3aa
+    image: docker.io/valkey/valkey:9@sha256:fb8d272e529ea567b9bf1302245796f21a2672b8368ca3fcb938ac334e613c8f # :8@sha256:81db6d39e1bba3b3ff32bd3a1b19a6d69690f94a3954ec131277b9a26b95b3aa
     healthcheck:
       test: redis-cli ping || exit 1
-    restart: always
+    restart: unless-stopped
+    # restart: always
+    networks:
+      - immich-net
 
   database:
     container_name: immich_postgres
@@ -66,10 +77,15 @@ services:
       # DB_STORAGE_TYPE: 'HDD'
     volumes:
       # Do not edit the next line. If you want to change the database storage location on your system, edit the value of DB_DATA_LOCATION in the .env file
-      # ${PATH_TO_CONTAINERS}/Immich/postgresql:/var/lib/postgresql/data
       - ${DB_DATA_LOCATION}:/var/lib/postgresql/data
     shm_size: 128mb
-    restart: always
+    restart: unless-stopped
+    # restart: always
+    networks:
+      - immich-net
 
 volumes:
   model-cache:
+networks:
+  immich-net:
+    external: true

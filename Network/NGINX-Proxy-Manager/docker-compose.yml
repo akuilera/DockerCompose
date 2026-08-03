@@ -1,0 +1,91 @@
+services:
+  nginx_proxy_manager:
+    container_name: nginx_proxy_manager
+    image: 'jc21/nginx-proxy-manager:latest'
+    restart: unless-stopped
+    environment:
+      DB_MYSQL_HOST: mariadb
+      DB_MYSQL_PORT: 3306
+      DB_MYSQL_USER: ${MYSQL_NGINX_USER}
+      DB_MYSQL_PASSWORD: ${MYSQL_NGINX_PASS}
+      DB_MYSQL_NAME: ${MYSQL_NGINX_NAME}
+    ports:
+      # These ports are in format <host-port>:<container-port>
+      - '80:80' # Public HTTP Port
+      - '443:443' # Public HTTPS Port
+      - '81:81' # Admin Web Port
+      # - '40080:80' # Public HTTP Port
+      # - '40443:443' # Public HTTPS Port
+      # - '40081:81' # Admin Web Port
+      # Add any other Stream port you want to expose
+      # - '21:21' # FTP
+    volumes:
+      - ${PATH_TO_CONTAINERS}/NGINX-Proxy-Manager/data/npm_data:/data
+      - ${PATH_TO_CONTAINERS}/NGINX-Proxy-Manager/data/letsencrypt:/etc/letsencrypt
+      - ${PATH_TO_CONTAINERS}/NGINX-Proxy-Manager/data/npm_logs:/var/log/nginx
+    # depends_on:
+    #   - db
+    #   # - mariadb
+    networks:
+      - proxy-net
+      - db-net
+      - nextcloud-net
+      - immich-net
+      - apps-net
+
+  # goaccess:
+  #   image: justsky/goaccess-for-nginxproxymanager:latest
+  #   container_name: goaccess
+  #   restart: unless-stopped
+  #   environment:
+  #       - TZ=Etc/UTC
+  #       #- SKIP_ARCHIVED_LOGS=False #optional
+  #       #- BASIC_AUTH=False #optional
+  #       #- BASIC_AUTH_USERNAME=user #optional
+  #       #- BASIC_AUTH_PASSWORD=pass #optional
+  #   ports:
+  #       - '7880:7880'
+  #   volumes:
+  #       - ${PATH_TO_CONTAINERS}/NGINX-Proxy-Manager/data/logs:/opt/log
+  #       # - ./data/npm_data/logs:/opt/log
+  #       # - ./data/npm_data/logs/proxy-host-1_access.log:/opt/log/proxy-host-1_access.log
+  #   networks:
+  #     - proxy-net
+
+  # db:
+  #   # image: 'jc21/mariadb-aria:latest'
+  #   # restart: unless-stopped
+  #   external:
+  #     name: mariadb
+  #   networks:
+  #     - app-network
+
+networks:
+  proxy-net:
+    external: true
+    name: proxy-net
+    # driver: bridge
+  db-net:
+    external: true
+    name: db-net
+    # driver: bridge
+  nextcloud-net:
+    external: true
+    name: nextcloud-net
+    # driver: bridge
+  immich-net:
+    external: true
+    name: immich-net
+    # driver: bridge
+  apps-net:
+    external: true
+    name: apps-net
+    # driver: bridge
+
+####
+#
+#     Default Administrator User login:
+#     Email:    admin@example.com
+#     Password: changeme
+#
+####

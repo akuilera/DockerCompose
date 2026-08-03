@@ -1,0 +1,56 @@
+version: '3.8'
+
+services:
+  borg-ui:
+    image: ainullcode/borg-ui:latest
+    container_name: borg-web-ui
+    restart: unless-stopped
+    ports:
+      - "8081:8081"
+    volumes:
+      # Internal Borg data - Not the BackUps
+      # - borg_data:/data
+      # - borg_cache:/home/borg/.cache/borg
+      - ${CONTAINERS_DISK_PATH}/BorgBackUp/borg_data:/data
+      - ${CONTAINERS_DISK_PATH}/BorgBackUp/borg_cache:/home/borg/.cache/borg
+      # - /path/to/your/data:/local:ro   # Directory you want to back up
+      - ${SOURCE_PATH_1}:/local/Sources/${REPO_NAME_1}:ro
+      - ${SOURCE_PATH_2}:/local/Sources/${REPO_NAME_2}:ro
+      # - ${SOURCE_PATH_3}:/local/Sources/${REPO_NAME_3}:ro
+      # Mounts to Repo destinations
+      - ${BACKUP_PATH}/${REPO_NAME_1}:/local/BackUps/${REPO_NAME_1}:rw
+      - ${BACKUP_PATH}/${REPO_NAME_2}:/local/BackUps/${REPO_NAME_2}:rw
+      # - ${BACKUP_PATH}/${REPO_NAME_3}:/local/BackUps/${REPO_NAME_3}:rw
+    environment:
+      - TZ=Europe/Berlin
+      - PUID=${PUID}
+      - PGID=${PGID}
+      # - REDIS_URL=redis://192.168.1.100:6379/0  # External Redis
+      # With password:
+      # - REDIS_URL=redis://:password@192.168.1.100:6379/0
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      # - LOCAL_MOUNT_POINTS=${BACKUP_PATH},${SOURCE_PATH_1},${SOURCE_PATH_2}
+      # - LOCAL_MOUNT_POINTS=/local/Sources/${REPO_NAME_1},/local/Sources/${REPO_NAME_2},/local/BackUps/${REPO_NAME_1},/local/BackUps/${REPO_NAME_2}
+    networks:
+      - db-net
+
+# volumes:
+#   borg_data:
+#     driver: local
+#     driver_opts:
+#       type: none
+#       o: bind
+#       device: ${CONTAINERS_DISK_PATH}/BorgBackUp/borg_data
+
+#   borg_cache:
+#     driver: local
+#     driver_opts:
+#       type: none
+#       o: bind
+#       device: ${CONTAINERS_DISK_PATH}/BorgBackUp/borg-cache
+
+networks:
+  db-net:
+    external: true
+    name: db-net

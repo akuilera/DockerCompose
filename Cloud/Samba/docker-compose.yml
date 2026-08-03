@@ -1,0 +1,38 @@
+services:
+  samba:
+    image: dperson/samba
+    restart: unless-stopped
+    container_name: samba
+    ports:
+      - "137:137/udp"
+      - "138:138/udp"
+      - "139:139/tcp"
+      - "445:445/tcp"
+    environment:
+      - USERID=${UID} # UID del usuario
+      - GROUPID=${GID} # GID del grupo
+      - TZ=Etc/UTC
+    volumes:
+      - ${PATH_TO_DOCUMENTS}:${PATH_TO_DOCUMENTS}
+      - ${PATH_TO_CONTAINERS}:${PATH_TO_CONTAINERS}
+      # - ${PATH_TO_DOCUMENTS_3}:${PATH_TO_DOCUMENTS_3}
+    # command: '-u "${USER_NAME};${USER_PASSWORD}" -s "${USER_NAME};${PATH_TO_DOCUMENTS};yes;no;no;${USER_NAME}"' # The USER_NAME variable should be the same that you use in your host (the same with the UID)
+    # command: '-u "${USER_NAME};${USER_PASSWORD}" -s "${USER_NAME};${PATH_TO_DOCUMENTS};yes;no;no;${USER_NAME};${USER_NAME};${USER_NAME};${USER_NAME}" -p'
+    # command: >
+    #   bash -c "
+    #   chown -R 1000:1000 /mnt/usb/emm &&
+    #   samba.sh -u 'emm;zxc' -s 'shared;/mnt/usb/emm;yes;no;no;emm'"
+    command: >
+      -u "${USER_NAME};${USER_PASSWORD}"
+      -s "Documentos;${PATH_TO_DOCUMENTS};yes;no;no;${USER_NAME}"
+      -s "Data Containers;${PATH_TO_CONTAINERS};yes;no;no;${USER_NAME}"
+    #   -s "Linux;${PATH_TO_DOCUMENTS_3};yes;no;no;${USER_NAME}"
+    networks:
+       # - file-sharing-net
+       - files-net
+
+networks:
+  # file-sharing-net:
+  #   external: true
+  files-net:
+    external: true

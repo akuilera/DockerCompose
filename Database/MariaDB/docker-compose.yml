@@ -1,9 +1,9 @@
-# version: "3.8"
-
 services:
   mariadb:
     container_name: mariadb
     image: mariadb:latest
+    restart: always
+    # command: --transaction-isolation=READ-COMMITTED --log-bin=binlog --binlog-format=ROW
     environment:
       MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
       MYSQL_DATABASE: ${MYSQL_DATABASE}
@@ -13,7 +13,7 @@ services:
       - ${PATH_TO_CONTAINERS}/MariaDB/data:/var/lib/mysql
       - ${PATH_TO_CONTAINERS}/MariaDB/my_custom.cnf:/etc/mysql/conf.d/my_custom.cnf
     networks:
-      - app-network
+      - db-net
     ports:
       - "3306:3306"
     healthcheck:
@@ -23,11 +23,18 @@ services:
       timeout: 10s
       retries: 5
 
-volumes:
-  mariadb-data:
+  redis:
+    container_name: redis
+    image: redis:alpine
+    restart: always
+    networks:
+      - db-net
+
+# volumes:
+#   mariadb-data:
 
 networks:
-  app-network:
-    driver: bridge
-    name: app-network
+  db-net:
+    # driver: bridge
+    name: db-net
     external: true

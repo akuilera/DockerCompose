@@ -1,0 +1,88 @@
+services:
+# NextCloud - Private
+  nextcloud:
+    container_name: nextcloud
+    hostname: nextcloud
+    image: nextcloud:latest
+    restart: always
+    ports:
+      - 8080:80
+    # depends_on:
+    #   - mariadb # Only works if Nextcloud and MariaDB are on the same YAML
+    volumes:
+      # - /ruta/local/data:/var/www/html/data
+      # - /ruta/local/apps:/var/www/html/apps
+      # - /ruta/local/config:/var/www/html/config
+      # - ${PATH_TO_CLOUD_DATA}:/var/www/html
+      - ${PATH_TO_CLOUD_DATA}/nextcloud_data:/var/www/html/data
+      - ${PATH_TO_CONTAINERS}/Nextcloud/apps:/var/www/html/apps
+      - ${PATH_TO_CONTAINERS}/Nextcloud/config:/var/www/html/config
+    environment:
+      - MYSQL_HOST=mariadb
+      - MYSQL_DATABASE=${MYSQL_DATABASE}
+      - MYSQL_USER=${MYSQL_USER}
+      - MYSQL_PASSWORD=${MYSQL_PASSWORD}
+      - NEXTCLOUD_TRUSTED_DOMAINS=${NEXTCLOUD_TRUSTED_DOMAINS} # Domain Names or IPs (can also be private) separated with commas
+      - REDIS_HOST=redis
+      # - REDIS_HOST_PASSWORD=${REDIS_HOST_PASSWORD} # Optional in case you use another config
+      # - OVERWRITECLIURL=${OVERWRITECLIURL} # ${NEXTCLOUD_TRUSTED_DOMAINS} with https://
+      # - OVERWRITEPROTOCOL=https
+    networks:
+      - db-net
+      - nextcloud-net
+
+  collabora:
+    image: collabora/code # :24.04.12.3.1
+
+  #   # network_mode: "host"
+  #   ports:
+  #     # - 127.0.0.1:9980:9980
+  #     # - collabora:9980:9980
+  #     - 9980:9980
+    container_name: collabora
+    hostname: collabora
+    restart: unless-stopped
+  #   # release notes: https://www.collaboraonline.com/release-notes/
+  #   # networks:
+  #   #   ocis-net:
+    volumes:
+      # - ${PATH_TO_CONTAINERS}/Nextcloud/collabora/coolwsd.xml:/etc/coolwsd/coolwsd.xml
+      - ${PATH_TO_CONTAINERS}/Nextcloud/collabora/:/etc/coolwsd/
+
+    environment:
+  #     # aliasgroup1: https://collabora.local.akuilera.space|https://nextcloud.local.akuilera.space # ${alias_1_1}|${alias_1_2}|${alias_1_3} # Aliases must be separated by `|`
+  #     aliasgroup1: https://nextcloud.local.akuilera.space
+  #     # |collabora.local.akuilera.space
+  #     # aliasgroup2: ${alias21} # Remove this line if you don't have any other services using Collabora (like Owncloud)
+      # DONT_GEN_SSL_CERT: "YES"
+  #     extra_params: |
+  #       --o:ssl.enable=false \
+  #       --o:ssl.ssl_verification=true \
+  #       --o:ssl.termination=true \
+  #       --o:welcome.enable=false
+      - domain=nextcloud\.local\.akuilera\.space
+      - username=admin
+      - password=${COLLABORA_PASSWORD}
+      - DONT_GEN_SSL_CERT=YES
+      - extra_params=--o:ssl.enable=false --o:ssl.termination=true --o:logging.level=information
+      # username: admin
+      # password: admin
+      # domain: nextcloud.local.akuilera.space|nextcloud.akuilera.space|nextcloud.zero.akuilera.space
+  #   cap_add:
+  #     - MKNOD
+  #   logging:
+  #     driver: ${LOG_DRIVER:-local}
+  #   restart: always
+  #   command: ["bash", "-c", "coolconfig generate-proof-key ; /start-collabora-online.sh"]
+  #   healthcheck:
+  #     test: [ "CMD", "curl", "-f", "http://localhost:9980/hosting/discovery" ]
+    ports:
+      - "9980:9980"
+    networks:
+      - nextcloud-net
+
+networks:
+  db-net:
+    external: true
+  nextcloud-net:
+    external: true
