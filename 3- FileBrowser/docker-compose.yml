@@ -1,0 +1,27 @@
+services:
+  filebrowser:
+    container_name: filebrowser
+    image: filebrowser/filebrowser:s6
+    environment:
+      - PUID=${PUID}
+      - PGID=${PGID}
+      - TZ=Europe/Berlin
+    ports:
+      - "1000:80"
+    volumes:
+      - ${PATH_TO_SYSTEM_BACKUP}:/srv/BackUpSist
+      - ${PATH_TO_DOCUMENTS_BACKUP}:/srv/BackUpDocs
+      - ${PATH_TO_DOCUMENTS}:/srv/Documentos
+      - ${PATH_TO_SERVER_HOME}:/srv/data
+      - ${PATH_TO_CONTAINERS}/FileBrowser/config:/config
+      - ${PATH_TO_CONTAINERS}/FileBrowser/database:/database
+      # - ${DISK_PATH_1}/srv:/srv/data_1
+      # - /mnt:/srv/mnt
+      # - /srv:/srv
+    restart: unless-stopped
+    networks:
+      - isolated_2
+
+networks:
+  isolated_2:
+    external: true

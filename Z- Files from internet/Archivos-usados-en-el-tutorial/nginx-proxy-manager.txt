@@ -1,0 +1,30 @@
+# mginx-proxy
+#
+services:
+  app:
+    image: 'jc21/nginx-proxy-manager:latest'
+    restart: unless-stopped
+    ports:
+      # These ports are in format <host-port>:<container-port>
+      - '82:80' # Public HTTP Port
+      - '443:443' # Public HTTPS Port
+      - '81:81' # Admin Web Port
+      # Add any other Stream port you want to expose
+      # - '21:21' # FTP
+    volumes:
+      - /mnt/usb/emm/nginxproxymanager/data:/data
+      - /mnt/usb/emm/nginxproxymanager/letsencrypt:/etc/letsencrypt
+    depends_on:
+      - db
+  db:
+    image: 'jc21/mariadb-aria:latest'
+    restart: unless-stopped
+    volumes:
+      - /mnt/usb/emm/nginxproxymanager/mysql:/var/lib/mysql
+####
+#
+#     Default Administrator User login:
+#     Email:    admin@example.com
+#     Password: changeme
+#
+####

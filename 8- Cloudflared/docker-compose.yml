@@ -1,0 +1,28 @@
+version: '3.7'
+networks:
+  dockerbron:
+    name: dockerbron
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.30.1.0/24
+services:
+  # Cloudflared for the tunnel via Cloudflare
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    container_name: cloudflared
+    restart: unless-stopped
+    networks:
+      dockerbron:
+        ipv4_address: 172.30.1.2
+    # volumes:
+      # - ${DISK_UUID_PATH}/Cloudflared/etc:/etc/cloudflared # Here goes your config.yml JSON and credentials
+      # - ${DISK_UUID_PATH}/Cloudflared/root:/root/.cloudflared # Here goes your config.yml JSON and credentials
+    command:
+      - tunnel
+      - --no-autoupdate # Uncomment if unstable because of updates
+      - run
+      - --token # Do not use if there is a config.yml file
+      - ${CLOUDFLARED_TOKEN} # Use only with the token
+      # - --config # Do not use if there is a token
+      # - /root/.cloudflared/config.yml # Use only with the config.yml file

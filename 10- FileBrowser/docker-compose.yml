@@ -1,0 +1,22 @@
+services:
+  filebrowser:
+    container_name: filebrowser
+    image: filebrowser/filebrowser:s6
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=Europe/Berlin
+    ports:
+      - "1000:80"
+    volumes:
+      - /mnt/BackUpSist:/srv/BackUpSist
+      - /mnt/BackUpDocs:/srv/BackUpDocs
+      - /mnt/Documentos:/srv/Documentos
+      # - /otra/ruta/disco:/srv/OtroDisco
+      # - ${DISK_PATH}/srv:/data
+      - /home:/srv/data
+      # - /mnt:/srv/mnt
+      # - /srv:/srv
+      - ${FILEBROWSER_DISK_PATH}/Containers/FileBrowser/config:/config
+      - ${FILEBROWSER_DISK_PATH}/Containers/FileBrowser/database:/database
+    restart: unless-stopped

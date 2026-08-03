@@ -1,0 +1,25 @@
+services:
+  goaccess:
+    image: justsky/goaccess-for-nginxproxymanager:latest
+    container_name: goaccess
+    restart: unless-stopped
+    environment:
+        - TZ=Etc/UTC
+        #- SKIP_ARCHIVED_LOGS=False #optional   
+        - BASIC_AUTH=True # False #optional
+        - BASIC_AUTH_USERNAME=${BASIC_AUTH_USERNAME} #optional
+        - BASIC_AUTH_PASSWORD=${BASIC_AUTH_PASSWORD} #optional                
+    ports:
+        - '7880:7880'
+    volumes:
+        - ${PATH_TO_CONTAINERS}/NGINX-Proxy-Manager/data/npm_data/logs:/opt/log
+        # - ${PATH_TO_CONTAINERS}/NGINX-Proxy-Manager/data/npm_data/logs:/opt/log
+        # - ./data/npm_data/logs:/opt/log
+        # - ./data/npm_data/logs/proxy-host-1_access.log:/opt/log/proxy-host-1_access.log
+    networks:
+      - proxy-net
+
+networks:
+  proxy-net:
+    external: true
+    name: proxy-net

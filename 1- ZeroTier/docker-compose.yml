@@ -1,0 +1,58 @@
+services:
+  zerotier:
+    image: zerotier/zerotier:latest
+    container_name: zerotier
+    restart: unless-stopped
+    volumes:
+      - ${PATH_TO_CONTAINERS}/ZeroTier/zerotier-one:/var/lib/zerotier-one
+    environment:
+      - ZT_OVERRIDE_LOCAL_CONF=true
+      - ZT_ALLOW_MANAGEMENT_FROM=127.0.0.1/32 # Solo localhost # 0.0.0.0/0 # All trafic
+    cap_add:
+      - NET_ADMIN
+    devices:
+      - /dev/net/tun
+    network_mode: host # Maybe change, so that it is able to comunicate with WireGuard
+    # Firewall: ufw deny 9993/udp o iptables -A INPUT -p udp --dport 9993 -j DROP
+    # expose:
+    #   - "9993/tcp"
+    # ports:
+    #   - "9993:9993/udp"
+    # networks:
+    #   - vpn-net
+    
+  # zero-ui:
+  #   image: dec0dos/zero-ui:latest
+  #   container_name: zt-main
+  #   restart: unless-stopped
+  #   depends_on:
+  #     - zerotier
+  #   volumes:
+  #     - ${PATH_TO_CONTAINERS}/ZeroTier/zerotier-one:/var/lib/zerotier-one
+  #     - ${PATH_TO_CONTAINERS}/ZeroTier/zt-data:/app/backend/data
+  #   environment:
+  #     # - ZU_CONTROLLER_ENDPOINT=http://zerotier:9993/
+  #     # - ZU_CONTROLLER_ENDPOINT=http://host.docker.internal:9993
+  #     - ZU_CONTROLLER_ENDPOINT=http://localhost:9993
+  #     - ZU_SECURE_HEADERS=true
+  #     # - ZU_SECURE_HEADERS=false
+  #     - ZU_DEFAULT_USERNAME=${ZT_UI_USER}
+  #     - ZU_DEFAULT_PASSWORD=${ZT_UI_PASS}
+  #   # ports:
+  #   #   - 4000:4000
+  #   network_mode: host
+
+  # npm:
+  #   image: 'jc21/nginx-proxy-manager:latest'
+  #   restart: unless-stopped
+  #   ports:
+  #     - '80:80'
+  #     - '81:81'
+  #     - '443:443'
+  #   volumes:
+  #     - ./data:/data
+  #     - ./letsencrypt:/etc/letsencrypt
+  
+# networks:
+#   vpn-net:
+#     external: true

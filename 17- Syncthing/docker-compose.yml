@@ -1,0 +1,18 @@
+services:
+  syncthing:
+    image: lscr.io/linuxserver/syncthing:latest
+    container_name: syncthing
+    hostname: syncthing #optional
+    environment:
+      - PUID=1000
+      - PGID=100
+      - TZ=Etc/UTC
+    volumes:
+      - ${CONTAINERS_DISK_PATH}/Syncthing/config:/config
+      - ${PATH_TO_YAMLS}:/YAMLs # Optional - To save the YAMLs
+    ports:
+      - 8384:8384
+      - 22000:22000/tcp
+      - 22000:22000/udp
+      - 21027:21027/udp
+    restart: unless-stopped

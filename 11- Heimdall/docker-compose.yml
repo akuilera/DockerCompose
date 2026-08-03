@@ -1,0 +1,30 @@
+services:
+  heimdall:
+    image: lscr.io/linuxserver/heimdall:latest
+    container_name: heimdall
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=Etc/UTC
+    volumes:
+      - ${DISK_UUID_PATH}/Containers/Heimdall/config:/config
+    ports:
+      # - 81:80
+      - 801:80
+      - 4431:443
+    restart: unless-stopped
+
+  heimdall_local:
+    image: lscr.io/linuxserver/heimdall:latest
+    container_name: heimdall_local
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=Etc/UTC
+    volumes:
+      - ${DISK_UUID_PATH}/Containers/Heimdall/config_local:/config
+    ports:
+      # - 81:80
+      - 802:80
+      - 4432:443
+    restart: unless-stopped
