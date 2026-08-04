@@ -87,6 +87,24 @@ mirror   GitHub — DR / bootstrap only
 - Daily work uses only `origin`: a single `git push` updates both Forgejo and the mirror.
 - `lan` is a fallback route when the public one is unreachable; `mirror` is reserved for DR.
 
+### Server auto-sync (cron service)
+
+The server keeps a working copy of the repo at
+`/mnt/Documentos/Hogar/Proyectos/Programación/Segundo Cerebro/Código/Docker Compose/`,
+always identical to `main`:
+
+- A **cron job** runs every 10 minutes:
+  `git -C "<server path>" pull --ff-only`, with the log at
+  `~/.cache/mirror-dockercompose.log`.
+- The server authenticates to Forgejo over SSH (alias `forgejo-mirror`,
+  port 222) with the key `~/.ssh/llave_ssh_servidor-forgejo` (registered in
+  the Forgejo account).
+- The working copy contains **only** versioned content. Old leftovers that
+  are not in the repo are removed (`git clean -fd`): nothing lives outside
+  git on the server. If a pull fails (e.g. an untracked file would be
+  overwritten), the error lands in the log and the folder stays as-is until
+  it is fixed.
+
 ### Disaster recovery (DR)
 
 If Forgejo dies, the repo is still recoverable because every change was also pushed to the GitHub mirror:
