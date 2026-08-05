@@ -1,0 +1,33 @@
+services:
+  vaultwarden:
+    image: vaultwarden/server:latest
+    container_name: vaultwarden
+    restart: unless-stopped
+    environment:
+      DOMAIN: ${VAULTWARDEN_DOMAIN}
+      SIGNUPS_ALLOWED: "false"
+      # Los valores se leen desde archivos (Docker secrets); nunca entran al entorno.
+      ADMIN_TOKEN_FILE: /run/secrets/admin_token
+      DATABASE_URL_FILE: /run/secrets/db_url
+    volumes:
+      - "${PATH_TO_CONTAINERS}/Vaultwarden/data:/data"
+    secrets:
+      - admin_token
+      - db_url
+    networks:
+      - db-net
+      - proxy-net
+
+secrets:
+  admin_token:
+    file: "${PATH_TO_SECRETS}/Vaultwarden/admin_token"
+  db_url:
+    file: "${PATH_TO_SECRETS}/Vaultwarden/db_url"
+
+networks:
+  db-net:
+    external: true
+    name: db-net
+  proxy-net:
+    external: true
+    name: proxy-net
