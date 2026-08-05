@@ -8,8 +8,8 @@ services:
       DOMAIN_FILE: /run/secrets/domain
       # Set SIGNUPS_ALLOWED to "true" if you want to create users.
       # Set it to "false" for safety
-      SIGNUPS_ALLOWED: "true"
-      # SIGNUPS_ALLOWED: "false"
+      # SIGNUPS_ALLOWED: "true"
+      SIGNUPS_ALLOWED: "false"
       ADMIN_TOKEN_FILE: /run/secrets/admin_token
       DATABASE_URL_FILE: /run/secrets/db_url
     volumes:
