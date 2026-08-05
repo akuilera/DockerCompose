@@ -4,9 +4,12 @@ services:
     container_name: vaultwarden
     restart: unless-stopped
     environment:
-      # Los valores se leen desde archivos (Docker secrets); nunca entran al entorno.
+      # Values are read from files (Docker secrets); they never enter environment.
       DOMAIN_FILE: /run/secrets/domain
-      SIGNUPS_ALLOWED: "false"
+      # Set SIGNUPS_ALLOWED to "true" if you want to create users.
+      # Set it to "false" for safety
+      SIGNUPS_ALLOWED: "true"
+      # SIGNUPS_ALLOWED: "false"
       ADMIN_TOKEN_FILE: /run/secrets/admin_token
       DATABASE_URL_FILE: /run/secrets/db_url
     volumes:
