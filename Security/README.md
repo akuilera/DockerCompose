@@ -28,7 +28,8 @@ Values therefore do not appear in `docker inspect` output or in
 Creates the secret files for a service. Usage:
 
 ```bash
-./init-secrets.sh [--force] <Service> <secret1> [secret2 ...]
+./init-secrets.sh [options] <Service> <secret1> [secret2 ...]
+./init-secrets.sh --update-database <Service>
 ```
 
 Secret types:
@@ -38,9 +39,19 @@ Secret types:
   derived from the service name (`<service>_user`, `<service>_db`, host
   `mariadb`, port `3306`). User and password are percent-encoded, so any
   characters are safe.
-- `<name>@db` — raw database password, stored as-is (the value your compose
-  `*_FILE` variable reads). Prompts for database, user, grants and password
-  (twice). Defaults: `<service>_db`, `<service>_user`, `ALL PRIVILEGES`.
+- `@db` — full DB credential set for a service. Prompts for DB name (default
+  `<service>_db`), DB user (default `<service>_user`) and DB password (twice),
+  then writes four files: `db_mysql_name`, `db_mysql_user`,
+  `db_mysql_password` (the raw value a compose `*_FILE` reads) and
+  `db_mysql_url` (generated URL, for services that consume a connection URL).
+
+Options:
+
+- `--force` — recreate existing files without asking.
+- `--update-database <Service>` — apply the `db_mysql_*` files stored by `@db`
+  to MariaDB via `Database/sync-db-users.sh` (grants: `ALL PRIVILEGES`). Reads
+  the files, asks nothing, never puts the password on the command line.
+- `--dry-run` — with `--update-database`, only print the SQL that would run.
 
 Behavior:
 
@@ -54,22 +65,25 @@ Examples:
 
 ```bash
 ./init-secrets.sh Vaultwarden admin_token db_url@mysql domain
-./init-secrets.sh NginxProxyManager db_mysql_password@db
+./init-secrets.sh NginxProxyManager @db
+./init-secrets.sh --update-database --dry-run NginxProxyManager
 ```
 
 ## Rotating a database password
 
-After writing an `@mysql` or `@db` secret, `init-secrets.sh` asks whether to
-create/update the database and user in MariaDB (default No). Answering `y` runs
-`Database/sync-db-users.sh`, which applies the new password with a plain
-`ALTER USER ... IDENTIFIED BY`. MariaDB has no dual-password (`RETAIN CURRENT
-PASSWORD` is MySQL 8 only): the change is immediate, so the flow is:
+`@db` only writes files; it never touches MariaDB by itself. To apply or
+rotate a user, run `--update-database`, which executes the plain
+`ALTER USER ... IDENTIFIED BY` through `Database/sync-db-users.sh`. MariaDB
+has no dual-password (`RETAIN CURRENT PASSWORD` is MySQL 8 only), so the
+change is immediate. Flow:
 
-1. Write the **new** value to the secret file first
-   (`./init-secrets.sh <Service> <secret_name>@db`, answering `y` to apply it).
-2. Recreate the container so it reads the new secret
+1. Write the **new** value: `./init-secrets.sh <Service> @db` (recreate the
+   `db_mysql_*` files, keeping the DB name and user as-is).
+2. Apply it to MariaDB: `./init-secrets.sh --update-database <Service>`
+   (or `Database/sync-db-users.sh <Service> db_mysql_password <db> <user> "ALL PRIVILEGES"`).
+3. Recreate the container so it reads the new secret
    (`docker compose up -d --force-recreate`, or Update in Portainer).
-3. Verify the application works with the new value.
+4. Verify the application works with the new value.
 
 Keep the rotation window short: between the `ALTER` and the recreation the
 running container still holds the old value in memory and keeps working, but

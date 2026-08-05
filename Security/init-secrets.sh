@@ -19,7 +19,8 @@ set -euo pipefail
 # Prints the help text and exits. Called on --help and on invalid invocation.
 usage() {
     cat <<'EOF'
-Usage: ./init-secrets.sh [--force] <Service> <secret1> [secret2 ...]
+Usage: ./init-secrets.sh [options] <Service> <secret1> [secret2 ...]
+       ./init-secrets.sh --update-database <Service>
 
 Creates Docker compose secret files at $PATH_TO_SECRETS/<Service>/.
 A secret file is a plain text file whose content IS the value.
@@ -33,23 +34,25 @@ Secret types:
                    port=3306. The user and password are percent-encoded, so
                    any characters are accepted (newline and NUL aside). Use
                    the RAW password in the MariaDB statements.
-  <name>@db        Raw database password, stored as-is in the file <name>
-                   (the value your compose *_FILE variable reads). Prompts
-                   for database, user, grants and password (twice). Defaults:
-                   <service>_db, <service>_user, ALL PRIVILEGES.
-
-After writing an @mysql or @db secret the script asks whether to create/update
-the database and user in MariaDB (y/N, default No). Answering y runs
-Database/sync-db-users.sh, which applies the password with a plain
-ALTER USER ... IDENTIFIED BY. MariaDB has no dual-password (RETAIN CURRENT
-PASSWORD is MySQL 8 only), so after the change the container must be recreated
-to read the new secret:
-  Database/sync-db-users.sh <Service> <secret_name> <db> <user> [grants]
-then `docker compose up -d --force-recreate` and verify the application.
+  @db              Full DB credential set for the service. Prompts for DB
+                   name (default <service>_db), DB user (default
+                   <service>_user) and DB password (twice), then writes
+                   db_mysql_name, db_mysql_user, db_mysql_password and
+                   db_mysql_url in $PATH_TO_SECRETS/<Service>/. The raw
+                   password is the value of db_mysql_password (what a compose
+                   *_FILE variable reads); db_mysql_url is generated for
+                   services that consume a connection URL.
 
 Options:
-  --force   Recreate existing secrets without asking (deletes old value).
-  -h, --help   Show this help.
+  --force              Recreate existing secrets without asking (deletes old value).
+  --update-database    Apply the DB credentials stored by @db to MariaDB,
+                       running Database/sync-db-users.sh. Reads db_mysql_name,
+                       db_mysql_user and db_mysql_password; grants: ALL
+                       PRIVILEGES. Combine with --dry-run to only print the
+                       SQL that would be executed.
+  --dry-run            With --update-database: print what would be done, do
+                       not execute.
+  -h, --help           Show this help.
 
 Environment:
   PATH_TO_SECRETS  Base directory for secret files. Resolved in this order:
@@ -66,21 +69,29 @@ Behavior:
 
 Examples:
   ./init-secrets.sh Vaultwarden admin_token db_url@mysql domain
-  ./init-secrets.sh NginxProxyManager db_mysql_password@db
+  ./init-secrets.sh NginxProxyManager @db
   ./init-secrets.sh --force Vaultwarden admin_token
+  ./init-secrets.sh --update-database --dry-run NginxProxyManager
 EOF
     exit 1
 }
 
+die() { echo "Error: $*" >&2; exit 1; }
+
 # Parse command line ---------------------------------------------------------
-# Supports an optional --force flag (in any position), --help, and a literal
-# `--` separator. Everything else is collected as positional arguments:
-# the first is the service name, the rest are secret targets.
+# Supports --force, --update-database and --dry-run flags (in any position),
+# --help, and a literal `--` separator. Everything else is collected as
+# positional arguments: the first is the service name, the rest are secret
+# targets (or, with --update-database, there is exactly one service name).
 force=0
+update_db=0
+dry_run=0
 args=()
 while (($#)); do
     case "$1" in
         --force) force=1 ;;
+        --update-database) update_db=1 ;;
+        --dry-run) dry_run=1 ;;
         -h | --help) usage ;;
         --) shift && args+=("$@") && break ;;
         -*) echo "Unknown option: $1" >&2 && usage ;;
@@ -89,13 +100,15 @@ while (($#)); do
     shift
 done
 
-# A service name and at least one secret are required.
-if ((${#args[@]} < 2)); then
-    usage
+if ((update_db)); then
+    ((${#args[@]} == 1)) || die "--update-database takes exactly one argument: <Service>"
+    service="${args[0]}"
+else
+    # A service name and at least one secret are required.
+    ((${#args[@]} >= 2)) || usage
+    service="${args[0]}"
+    secrets=("${args[@]:1}")
 fi
-
-service="${args[0]}"
-secrets=("${args[@]:1}")
 
 # Resolve PATH_TO_SECRETS ----------------------------------------------------
 # 1. If already exported, use it.
@@ -115,6 +128,41 @@ fi
 if [[ -z "${PATH_TO_SECRETS:-}" ]]; then
     echo "Warning: PATH_TO_SECRETS is not set and global.env was not found. Falling back to ~/.secrets" >&2
     PATH_TO_SECRETS="${HOME}/.secrets"
+fi
+
+# update_database ------------------------------------------------------------
+# --update-database mode: read the db_mysql_* files written by @db and apply
+# them to MariaDB through Database/sync-db-users.sh. No prompts, no password
+# on the command line (sync-db-users.sh reads the secret file itself).
+update_database() {
+    local svc="$1"
+    local dir="${PATH_TO_SECRETS}/${svc}"
+    local name_file="${dir}/db_mysql_name"
+    local user_file="${dir}/db_mysql_user"
+    local pass_file="${dir}/db_mysql_password"
+
+    [[ -f "${name_file}" ]] || die "Not found: ${name_file}. Run: ./init-secrets.sh ${svc} @db"
+    [[ -f "${user_file}" ]] || die "Not found: ${user_file}. Run: ./init-secrets.sh ${svc} @db"
+    [[ -f "${pass_file}" ]] || die "Not found: ${pass_file}. Run: ./init-secrets.sh ${svc} @db"
+    [[ -x "${sync_script}" ]] || die "sync script not found: ${sync_script}"
+
+    local db user
+    db="$(cat "${name_file}")"
+    user="$(cat "${user_file}")"
+    [[ -n "${db}" ]] || die "Empty value in ${name_file}"
+    [[ -n "${user}" ]] || die "Empty value in ${user_file}"
+
+    echo "Applying DB user '${user}' on database '${db}' (grants: ALL PRIVILEGES)..."
+    if ((dry_run)); then
+        "${sync_script}" --dry-run "${svc}" db_mysql_password "${db}" "${user}" "ALL PRIVILEGES"
+    else
+        "${sync_script}" "${svc}" db_mysql_password "${db}" "${user}" "ALL PRIVILEGES"
+    fi
+}
+
+if ((update_db)); then
+    update_database "${service}"
+    exit 0
 fi
 
 # Create the base and service directories and lock them down. Directories are
@@ -245,8 +293,7 @@ urlencode_userinfo() {
 # are percent-encoded so that any characters work; host, port and database
 # name are validated because they sit in parts of the URL that are not decoded.
 # The password is the only required input (no default).
-# Sets MYSQL_URL (the URL) and MYSQL_URL_USER/DB/PASS (the raw spec, so the
-# caller can offer to create/update the database and user in MariaDB).
+# Sets MYSQL_URL (the URL) and MYSQL_URL_USER/DB/PASS (the raw spec).
 build_mysql_url() {
     local svc_lower def_user def_db
     local user host port name enc_user enc_pass
@@ -281,8 +328,6 @@ build_mysql_url() {
     # Password: required, no default, any characters allowed, confirmed twice.
     read_password_confirm MYSQL_URL_PASS "DB password: "
 
-    # Remember what was chosen so the caller can offer to create/update the
-    # database and user in MariaDB via sync-db-users.sh.
     MYSQL_URL_USER="${user}"
     MYSQL_URL_DB="${name}"
 
@@ -294,67 +339,66 @@ build_mysql_url() {
     MYSQL_URL="mysql://${enc_user}:${enc_pass}@${host}:${port}/${name}"
 }
 
-# prompt_db_spec -------------------------------------------------------------
-# Prompts for the database, user, grants and password of a `<name>@db` secret.
-# Defaults derive from the service name: <service>_db, <service>_user and
-# ALL PRIVILEGES. Sets DB_SPEC_DB, DB_SPEC_USER, DB_SPEC_GRANTS and
-# DB_SPEC_PASS.
-prompt_db_spec() {
-    local svc_lower def_user def_db
+# write_db_set ---------------------------------------------------------------
+# Prompts for the DB name (default <service>_db), DB user (default
+# <service>_user) and DB password (twice), then writes the four db_mysql_*
+# files in the service's secret directory. If any of them already exists and
+# --force was not given, asks once whether to recreate all of them. After
+# writing, prints how to apply the user to MariaDB later.
+write_db_set() {
+    local svc_lower def_user def_db db user enc_user enc_pass url
+    local files=(db_mysql_name db_mysql_user db_mysql_password db_mysql_url)
+    local answer existing=0 f
+
     svc_lower="$(printf '%s' "${service}" | tr '[:upper:]' '[:lower:]')"
     def_user="${svc_lower}_user"
     def_db="${svc_lower}_db"
 
     while :; do
-        readline DB_SPEC_DB "DB name [${def_db}]: "
-        DB_SPEC_DB="${DB_SPEC_DB:-${def_db}}"
-        [[ "${DB_SPEC_DB}" =~ ^[A-Za-z0-9_.-]+$ ]] && break
+        readline db "DB name [${def_db}]: "
+        db="${db:-${def_db}}"
+        [[ "${db}" =~ ^[A-Za-z0-9_.-]+$ ]] && break
         echo "Invalid DB name: use only letters, digits, _ . -" >&2
     done
     while :; do
-        readline DB_SPEC_USER "DB user [${def_user}]: "
-        DB_SPEC_USER="${DB_SPEC_USER:-${def_user}}"
-        [[ "${DB_SPEC_USER}" =~ ^[A-Za-z0-9_.-]+$ ]] && break
+        readline user "DB user [${def_user}]: "
+        user="${user:-${def_user}}"
+        [[ "${user}" =~ ^[A-Za-z0-9_.-]+$ ]] && break
         echo "Invalid DB user: use only letters, digits, _ . -" >&2
     done
-    readline DB_SPEC_GRANTS "Grants [ALL PRIVILEGES]: "
-    DB_SPEC_GRANTS="${DB_SPEC_GRANTS:-ALL PRIVILEGES}"
-    read_password_confirm DB_SPEC_PASS "DB password: "
-}
+    read_password_confirm DB_SET_PASS "DB password: "
 
-# ask_sync_db ----------------------------------------------------------------
-# After writing a database-backed secret, offers to create/update the database
-# and user in MariaDB through Database/sync-db-users.sh (default: No, so this
-# never runs without an explicit yes). When raw_pass is non-empty (the @mysql
-# case, where the secret file holds a URL, not the password) it is forwarded
-# through SECRET_PASSWORD so the sync script never sees it on the command line.
-ask_sync_db() {
-    local secret_name="$1" db="$2" user="$3" raw_pass="${4:-}" grants="${5:-ALL PRIVILEGES}"
-    local answer
-    readline answer "Create/update database '${db}' and user '${user}' in MariaDB? (y/N) "
-    if [[ "${answer}" != "y" && "${answer}" != "Y" ]]; then
-        echo "Skipped. If needed later:"
-        echo "  ${sync_script} ${service} ${secret_name} ${db} ${user} \"${grants}\""
-        return 0
+    for f in "${files[@]}"; do
+        [[ -f "${secret_dir}/${f}" ]] && existing=1 && break
+    done
+    if ((existing)) && ((!force)); then
+        readline answer "Database secret files exist in ${secret_dir} - recreate all? (y/N) "
+        if [[ "${answer}" != "y" && "${answer}" != "Y" ]]; then
+            echo "Keeping existing files."
+            unset DB_SET_PASS
+            return 0
+        fi
     fi
-    if [[ ! -x "${sync_script}" ]]; then
-        echo "Error: sync script not found: ${sync_script}" >&2
-        return 1
-    fi
-    echo "Running: ${sync_script} ${service} ${secret_name} ${db} ${user}"
-    if [[ -n "${raw_pass}" ]]; then
-        SECRET_PASSWORD="${raw_pass}" "${sync_script}" "${service}" "${secret_name}" "${db}" "${user}" "${grants}"
-    else
-        "${sync_script}" "${service}" "${secret_name}" "${db}" "${user}" "${grants}"
-    fi
+
+    write_value "${secret_dir}/db_mysql_name" "${db}"
+    write_value "${secret_dir}/db_mysql_user" "${user}"
+    write_value "${secret_dir}/db_mysql_password" "${DB_SET_PASS}"
+    enc_user="$(urlencode_userinfo "${user}")"
+    enc_pass="$(urlencode_userinfo "${DB_SET_PASS}")"
+    url="mysql://${enc_user}:${enc_pass}@mariadb:3306/${db}"
+    write_value "${secret_dir}/db_mysql_url" "${url}"
+    unset DB_SET_PASS
+
+    echo ""
+    echo "If needed later, apply the DB user with:"
+    echo "  ./Security/init-secrets.sh --update-database ${service}"
 }
 
 # Main loop ------------------------------------------------------------------
 # For each secret target:
-#   * name@mysql   -> build a MySQL URL, write it to the file `<name>`, and
-#                     offer to create/update the database and user in MariaDB.
-#   * name@db      -> prompt for the DB spec, write the raw password to the
-#                     file `<name>`, and offer to sync it to MariaDB.
+#   * name@mysql   -> build a MySQL URL, write it to the file `<name>`.
+#   * @db          -> prompt for DB name/user/password, write the db_mysql_*
+#                     file set.
 #   * name         -> read a plain value and write it to the file `<name>`.
 # `unset value` discards the captured secret from the shell as soon as it has
 # been written, so it does not linger in the script's memory.
@@ -366,19 +410,10 @@ for secret in "${secrets[@]}"; do
             build_mysql_url
             value="${MYSQL_URL}"
             write_value "${file}" "${value}"
-            unset value
-            ask_sync_db "${name}" "${MYSQL_URL_DB}" "${MYSQL_URL_USER}" "${MYSQL_URL_PASS}"
+            unset value MYSQL_URL MYSQL_URL_PASS
         fi
     elif [[ "${secret}" == *@db ]]; then
-        name="${secret%@db}"
-        file="${secret_dir}/${name}"
-        if should_write_file "${file}"; then
-            prompt_db_spec
-            value="${DB_SPEC_PASS}"
-            write_value "${file}" "${value}"
-            unset value DB_SPEC_PASS
-            ask_sync_db "${name}" "${DB_SPEC_DB}" "${DB_SPEC_USER}" "" "${DB_SPEC_GRANTS}"
-        fi
+        write_db_set
     else
         file="${secret_dir}/${secret}"
         if should_write_file "${file}"; then

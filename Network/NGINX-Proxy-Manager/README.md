@@ -30,11 +30,13 @@ NPM supports `__FILE` for any environment variable: the image's
 the file's content as the plain variable, so `DB_MYSQL_*` never appear in
 plaintext in the container environment.
 
-Create the secret files (user/name are plain values; password is the raw DB
-password, and answering `y` at the prompt also applies it to MariaDB):
+Create the secret files (a single `@db` call writes all four `db_mysql_*`
+files; `--update-database` also applies the user to MariaDB when you are
+ready):
 
 ```bash
-./init-secrets.sh NginxProxyManager db_mysql_user db_mysql_password@db db_mysql_name
+./Security/init-secrets.sh NginxProxyManager @db
+./Security/init-secrets.sh --update-database NginxProxyManager   # optional, applies to MariaDB
 ```
 
 After recreating the container, verify the DB user logs in with the secret
