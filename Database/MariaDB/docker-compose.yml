@@ -4,11 +4,13 @@ services:
     image: mariadb:latest
     restart: always
     # command: --transaction-isolation=READ-COMMITTED --log-bin=binlog --binlog-format=ROW
+    # The root password is read from a file (Docker secret); it never enters
+    # the environment. Note: on an existing data directory the image ignores
+    # MYSQL_ROOT_PASSWORD_FILE at runtime (it only applies on first bootstrap),
+    # so a rotation is done via SQL with RETAIN CURRENT PASSWORD, see
+    # Database/README.md.
     environment:
-      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
-      MYSQL_DATABASE: ${MYSQL_DATABASE}
-      MYSQL_USER: ${MYSQL_USER}
-      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+      MYSQL_ROOT_PASSWORD_FILE: /run/secrets/mysql_root_password
     volumes:
       - ${PATH_TO_CONTAINERS}/MariaDB/data:/var/lib/mysql
       - ${PATH_TO_CONTAINERS}/MariaDB/my_custom.cnf:/etc/mysql/conf.d/my_custom.cnf
@@ -16,6 +18,8 @@ services:
       - db-net
     ports:
       - "3306:3306"
+    secrets:
+      - mysql_root_password
     healthcheck:
       test: ["CMD-SHELL", "/usr/local/bin/healthcheck.sh --connect --innodb_initialized"]
       start_period: 40s
@@ -29,6 +33,10 @@ services:
     restart: always
     networks:
       - db-net
+
+secrets:
+  mysql_root_password:
+    file: "${PATH_TO_SECRETS}/MariaDB/mysql_root_password"
 
 # volumes:
 #   mariadb-data:
