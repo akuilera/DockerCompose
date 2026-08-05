@@ -13,8 +13,9 @@ Secret types:
   <name>@mysql     MySQL connection URL, built for you. Asks for user,
                    host (default: mariadb), port (default: 3306), database
                    and password, then writes "mysql://user:pass@host:port/db".
-                   The password is validated: only URL-safe characters
-                   (A-Z a-z 0-9 _ . ~ -) are accepted.
+                   The user and password are percent-encoded, so any
+                   characters are accepted (newline and NUL aside). Use the
+                   RAW password in the MariaDB CREATE USER statement.
 
 Options:
   --force   Recreate existing secrets without asking (deletes old value).
@@ -125,26 +126,53 @@ prompt_nonempty() {
     done
 }
 
+urlencode_userinfo() {
+    local str="$1" out="" c hex old_lc="${LC_ALL-}"
+    LC_ALL=C
+    while [[ -n "${str}" ]]; do
+        c="${str%"${str#?}"}"
+        str="${str#?}"
+        case "${c}" in
+            [A-Za-z0-9._~-]) out+="${c}" ;;
+            *) printf -v hex '%02X' "'${c}" ; out+="%${hex}" ;;
+        esac
+    done
+    LC_ALL="${old_lc}"
+    printf '%s' "${out}"
+}
+
 build_mysql_url() {
-    local user host port name pass
+    local user host port name pass enc_user enc_pass
     user="$(prompt_nonempty "DB user: " "DB user is required.")"
-    read -r -p "DB host [mariadb]: " host
-    host="${host:-mariadb}"
-    read -r -p "DB port [3306]: " port
-    port="${port:-3306}"
-    name="$(prompt_nonempty "DB name: " "DB name is required.")"
+    while :; do
+        read -r -p "DB host [mariadb]: " host
+        host="${host:-mariadb}"
+        [[ "${host}" =~ ^[A-Za-z0-9.-]+$ ]] && break
+        echo "Invalid DB host: use only letters, digits, dots and dashes." >&2
+    done
+    while :; do
+        read -r -p "DB port [3306]: " port
+        port="${port:-3306}"
+        [[ "${port}" =~ ^[0-9]+$ ]] && break
+        echo "Invalid DB port: must be numeric." >&2
+    done
+    while :; do
+        name="$(prompt_nonempty "DB name: " "DB name is required.")"
+        [[ "${name}" =~ ^[A-Za-z0-9_.-]+$ ]] && break
+        echo "Invalid DB name: use only letters, digits, _ . -" >&2
+    done
     while :; do
         read -s -p "DB password: " pass
         echo >&2
-        if [[ -z "${pass}" ]]; then
-            echo "DB password is required." >&2
-        elif [[ "${pass}" =~ [^A-Za-z0-9._~-] ]]; then
-            echo "Unsafe character: password must only contain A-Z a-z 0-9 _ . ~ -" >&2
-        else
-            break
-        fi
+        [[ -n "${pass}" ]] && break
+        echo "DB password is required." >&2
     done
-    printf 'mysql://%s:%s@%s:%s/%s' "${user}" "${pass}" "${host}" "${port}" "${name}"
+    enc_user="$(urlencode_userinfo "${user}")"
+    enc_pass="$(urlencode_userinfo "${pass}")"
+    echo "Note: the password is percent-encoded in the URL. Use the RAW" >&2
+    echo "      password in MariaDB (CREATE USER ... IDENTIFIED BY '...')." >&2
+    echo "      Escape ' and \\ in the SQL if the password contains them." >&2
+    printf 'mysql://%s:%s@%s:%s/%s' "${enc_user}" "${enc_pass}" "${host}" "${port}" "${name}"
 }
 
 for secret in "${secrets[@]}"; do
