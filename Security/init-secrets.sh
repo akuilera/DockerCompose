@@ -10,12 +10,13 @@ A secret file is a plain text file whose content IS the value.
 
 Secret types:
   <name>           Plain value. You paste it (read silently).
-  <name>@mysql     MySQL connection URL, built for you. Asks for user,
-                   host (default: mariadb), port (default: 3306), database
-                   and password, then writes "mysql://user:pass@host:port/db".
-                   The user and password are percent-encoded, so any
-                   characters are accepted (newline and NUL aside). Use the
-                   RAW password in the MariaDB CREATE USER statement.
+  <name>@mysql     MySQL connection URL, built for you. Prompts for user,
+                   host, port, database and password, then writes
+                   "mysql://user:pass@host:port/db". Defaults derive from the
+                   service name: <service>_user, <service>_db, host=mariadb,
+                   port=3306. The user and password are percent-encoded, so
+                   any characters are accepted (newline and NUL aside). Use
+                   the RAW password in the MariaDB CREATE USER statement.
 
 Options:
   --force   Recreate existing secrets without asking (deletes old value).
@@ -78,12 +79,29 @@ secret_dir="${PATH_TO_SECRETS}/${service}"
 mkdir -p "${PATH_TO_SECRETS}" "${secret_dir}"
 chmod 700 "${PATH_TO_SECRETS}" "${secret_dir}"
 
+readline() {
+    local var="$1" prompt="${2:-}"
+    if ! IFS= read -r -p "${prompt}" "${var}"; then
+        echo "Error: unexpected end of input. Aborting." >&2
+        exit 1
+    fi
+}
+
+readsilent() {
+    local var="$1" prompt="${2:-}"
+    if ! IFS= read -s -r -p "${prompt}" "${var}"; then
+        echo "Error: unexpected end of input. Aborting." >&2
+        exit 1
+    fi
+    echo >&2
+}
+
 should_write_file() {
-    local file="$1"
+    local file="$1" answer
 
     if [[ -f "${file}" ]] && ((!force)); then
         echo "exists - not created: ${file}"
-        read -r -p "Recreate? This will DELETE the existing value. (y/N) " answer
+        readline answer "Recreate? This will DELETE the existing value. (y/N) "
         if [[ "${answer}" != "y" && "${answer}" != "Y" ]]; then
             echo "Keeping: ${file}"
             return 1
@@ -103,26 +121,13 @@ write_value() {
 prompt_secret() {
     local value
     while :; do
-        read -s -p "Paste value for ${1}: " value
-        echo >&2
+        readsilent value "Paste value for ${1}: "
         if [[ -z "${value}" ]]; then
             echo "Empty value. Skipping ${1}." >&2
             return 1
         fi
         printf '%s' "${value}"
         return
-    done
-}
-
-prompt_nonempty() {
-    local value
-    while :; do
-        read -r -p "${1}" value
-        if [[ -n "${value}" ]]; then
-            printf '%s' "${value}"
-            return
-        fi
-        echo "${2}" >&2
     done
 }
 
@@ -142,28 +147,35 @@ urlencode_userinfo() {
 }
 
 build_mysql_url() {
+    local svc_lower def_user def_db
     local user host port name pass enc_user enc_pass
-    user="$(prompt_nonempty "DB user: " "DB user is required.")"
+    svc_lower="$(printf '%s' "${service}" | tr '[:upper:]' '[:lower:]')"
+    def_user="${svc_lower}_user"
+    def_db="${svc_lower}_db"
+
+    readline user "DB user [${def_user}]: "
+    user="${user:-${def_user}}"
+
     while :; do
-        read -r -p "DB host [mariadb]: " host
+        readline host "DB host [mariadb]: "
         host="${host:-mariadb}"
-        [[ "${host}" =~ ^[A-Za-z0-9.-]+$ ]] && break
-        echo "Invalid DB host: use only letters, digits, dots and dashes." >&2
+        [[ "${host}" =~ ^[A-Za-z0-9._-]+$ ]] && break
+        echo "Invalid DB host: use only letters, digits, dots, dashes and underscores." >&2
     done
     while :; do
-        read -r -p "DB port [3306]: " port
+        readline port "DB port [3306]: "
         port="${port:-3306}"
         [[ "${port}" =~ ^[0-9]+$ ]] && break
         echo "Invalid DB port: must be numeric." >&2
     done
     while :; do
-        name="$(prompt_nonempty "DB name: " "DB name is required.")"
+        readline name "DB name [${def_db}]: "
+        name="${name:-${def_db}}"
         [[ "${name}" =~ ^[A-Za-z0-9_.-]+$ ]] && break
         echo "Invalid DB name: use only letters, digits, _ . -" >&2
     done
     while :; do
-        read -s -p "DB password: " pass
-        echo >&2
+        readsilent pass "DB password: "
         [[ -n "${pass}" ]] && break
         echo "DB password is required." >&2
     done
