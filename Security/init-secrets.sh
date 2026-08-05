@@ -40,11 +40,12 @@ Secret types:
 
 After writing an @mysql or @db secret the script asks whether to create/update
 the database and user in MariaDB (y/N, default No). Answering y runs
-Database/sync-db-users.sh, which applies the password with
-RETAIN CURRENT PASSWORD (dual password): the old and the new password both
-work, so the running service is never locked out. After recreating the
-container and verifying the app, revoke the old password with:
-  Database/sync-db-users.sh --discard-old <Service> <secret_name>
+Database/sync-db-users.sh, which applies the password with a plain
+ALTER USER ... IDENTIFIED BY. MariaDB has no dual-password (RETAIN CURRENT
+PASSWORD is MySQL 8 only), so after the change the container must be recreated
+to read the new secret:
+  Database/sync-db-users.sh <Service> <secret_name> <db> <user> [grants]
+then `docker compose up -d --force-recreate` and verify the application.
 
 Options:
   --force   Recreate existing secrets without asking (deletes old value).

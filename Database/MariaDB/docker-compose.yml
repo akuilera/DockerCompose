@@ -7,8 +7,7 @@ services:
     # The root password is read from a file (Docker secret); it never enters
     # the environment. Note: on an existing data directory the image ignores
     # MYSQL_ROOT_PASSWORD_FILE at runtime (it only applies on first bootstrap),
-    # so a rotation is done via SQL with RETAIN CURRENT PASSWORD, see
-    # Database/README.md.
+    # so a rotation is done via SQL over the socket, see Database/README.md.
     environment:
       MYSQL_ROOT_PASSWORD_FILE: /run/secrets/mysql_root_password
     volumes:

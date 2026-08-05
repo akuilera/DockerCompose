@@ -6,9 +6,9 @@ services:
     environment:
       DB_MYSQL_HOST: mariadb
       DB_MYSQL_PORT: 3306
-      DB_MYSQL_USER: ${MYSQL_NGINX_USER}
-      DB_MYSQL_PASSWORD: ${MYSQL_NGINX_PASS}
-      DB_MYSQL_NAME: ${MYSQL_NGINX_NAME}
+      DB_MYSQL_USER__FILE: /run/secrets/db_mysql_user
+      DB_MYSQL_PASSWORD__FILE: /run/secrets/db_mysql_password
+      DB_MYSQL_NAME__FILE: /run/secrets/db_mysql_name
     ports:
       # These ports are in format <host-port>:<container-port>
       - '80:80' # Public HTTP Port
@@ -32,6 +32,14 @@ services:
       - nextcloud-net
       - immich-net
       - apps-net
+
+secrets:
+  db_mysql_user:
+    file: "${PATH_TO_SECRETS}/NginxProxyManager/db_mysql_user"
+  db_mysql_password:
+    file: "${PATH_TO_SECRETS}/NginxProxyManager/db_mysql_password"
+  db_mysql_name:
+    file: "${PATH_TO_SECRETS}/NginxProxyManager/db_mysql_name"
 
   # goaccess:
   #   image: justsky/goaccess-for-nginxproxymanager:latest

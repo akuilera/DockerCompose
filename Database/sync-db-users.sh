@@ -8,12 +8,11 @@
 # EXISTS, CREATE USER IF NOT EXISTS, ALTER USER, GRANT and FLUSH PRIVILEGES.
 # It NEVER drops databases, users or grants.
 #
-# Primary use case - password-only rotation (user already exists):
-#   ALTER USER 'app'@'%' IDENTIFIED BY '<new>' RETAIN CURRENT PASSWORD;
-# After that statement BOTH the old and the new password work, so the running
-# container keeps working. Once the container has been recreated with the new
-# secret and the application is verified, revoke the old password with:
-#   ./sync-db-users.sh --discard-old <Service> <secret_name>
+# Primary use case - password rotation (user already exists):
+#   ALTER USER 'app'@'%' IDENTIFIED BY '<new>';
+# MariaDB (unlike MySQL 8) has no dual-password: the OLD password stops
+# working the moment this runs, so first move the service to the new secret
+# file value, apply, then recreate the container and verify the app.
 #
 # Passwords are read from files or from the docker CLI environment, never from
 # the command line (so they do not show up in `ps` or in shell history).
@@ -27,12 +26,10 @@ Usage: ./sync-db-users.sh [options] <Service> <secret_name> [<db> <user> [<grant
 Applies (or rotates) the MariaDB user for a service, using the password stored
 in $PATH_TO_SECRETS/<Service>/<secret_name>.
 
-Common case - rotate the password of an existing user (dual password):
-  ALTER USER ... IDENTIFIED BY '<new>' RETAIN CURRENT PASSWORD;
-The old password keeps working until you finalize, so no service can be locked
-out. After recreating the container with the new secret and verifying the app,
-revoke the old password:
-  ./sync-db-users.sh --discard-old <Service> <secret_name>
+Rotate the password of an existing user:
+  ALTER USER ... IDENTIFIED BY '<new>';
+MariaDB has no dual-password, so the change is immediate. Keep the rotation
+short: apply, recreate the container, verify the app.
 
 Options:
   --db <name>            Database name.        Default: <service>_db.
@@ -40,7 +37,6 @@ Options:
   --host <host>          User host (used when --user has no @host). Default: %.
   --grants "<grants>"    Grant to apply on <db>.* Default: ALL PRIVILEGES.
   --password-file <f>    Read the password from <f> instead of the secret file.
-  --discard-old          Finalize a rotation: revoke the old password.
   --dry-run              Print the SQL that would be executed; do nothing.
   -v, --verbose          Print the SQL as it is executed.
   -h, --help             Show this help.
@@ -67,7 +63,6 @@ EOF
 die() { echo "Error: $*" >&2; exit 1; }
 
 # ---- parse arguments ---------------------------------------------------------
-discard=0
 dry_run=0
 verbose=0
 db=""
@@ -83,7 +78,6 @@ while (($#)); do
         --host) shift; host_arg="${1:-}" ;;
         --grants) shift; grants="${1:-}" ;;
         --password-file) shift; password_file="${1:-}" ;;
-        --discard-old) discard=1 ;;
         --dry-run) dry_run=1 ;;
         -v | --verbose) verbose=1 ;;
         -h | --help) usage ;;
@@ -144,14 +138,9 @@ elif [[ -n "${password_file}" ]]; then
     password="$(cat "${password_file}")"
 else
     secret_file="${PATH_TO_SECRETS}/${service}/${secret_name}"
-    if [[ "${discard}" == "1" ]]; then
-        [[ -f "${secret_file}" ]] || die "Secret file not found: ${secret_file}"
-        password=""
-    else
-        [[ -f "${secret_file}" ]] || die "Secret file not found: ${secret_file}. Run: ./init-secrets.sh ${service} ${secret_name}"
-        password="$(cat "${secret_file}")"
-        [[ -n "${password}" ]] || die "Secret file is empty: ${secret_file}"
-    fi
+    [[ -f "${secret_file}" ]] || die "Secret file not found: ${secret_file}. Run: ./init-secrets.sh ${service} ${secret_name}"
+    password="$(cat "${secret_file}")"
+    [[ -n "${password}" ]] || die "Secret file is empty: ${secret_file}"
 fi
 
 # ---- docker command detection ---------------------------------------------------
@@ -248,24 +237,15 @@ if [[ "${ROOT_MODE}" != "none" ]]; then
 fi
 
 # ---- build SQL --------------------------------------------------------------------
-sql=""
-if [[ "${discard}" == "1" ]]; then
-    if ((exists != 1)); then
-        die "User '${user}'@'${host}' does not exist; nothing to finalize."
-    fi
-    sql="ALTER USER '${user}'@'${host}' DISCARD OLD PASSWORD;"
-    sql+=" FLUSH PRIVILEGES;"
+pw_sql="$(escape_sql "${password}")"
+sql="CREATE DATABASE IF NOT EXISTS \`${db}\`;"
+if ((exists == 1)); then
+    sql+=" ALTER USER '${user}'@'${host}' IDENTIFIED BY '${pw_sql}';"
 else
-    pw_sql="$(escape_sql "${password}")"
-    sql="CREATE DATABASE IF NOT EXISTS \`${db}\`;"
-    if ((exists == 1)); then
-        sql+=" ALTER USER '${user}'@'${host}' IDENTIFIED BY '${pw_sql}' RETAIN CURRENT PASSWORD;"
-    else
-        sql+=" CREATE USER IF NOT EXISTS '${user}'@'${host}' IDENTIFIED BY '${pw_sql}';"
-    fi
-    sql+=" GRANT ${grants} ON \`${db}\`.* TO '${user}'@'${host}';"
-    sql+=" FLUSH PRIVILEGES;"
+    sql+=" CREATE USER IF NOT EXISTS '${user}'@'${host}' IDENTIFIED BY '${pw_sql}';"
 fi
+sql+=" GRANT ${grants} ON \`${db}\`.* TO '${user}'@'${host}';"
+sql+=" FLUSH PRIVILEGES;"
 
 if [[ "${dry_run}" == "1" ]]; then
     printf '%s\n' "${sql}"
@@ -279,18 +259,12 @@ fi
 
 run_root_sql "${sql}"
 
-if [[ "${discard}" == "1" ]]; then
-    echo "Old password revoked for '${user}'@'${host}'."
-    echo "Verify the application still works with the new password before continuing."
-    exit 0
-fi
-
 # ---- verify the new password actually works ---------------------------------------
 if MYSQL_PWD="${password}" $DOCKER_CMD exec -e MYSQL_PWD -i "${MARIADB_CONTAINER}" mariadb -u"${user}" -h127.0.0.1 -e "SELECT 1" >/dev/null 2>&1; then
     echo "OK: '${user}'@'${host}' logs in with the new password."
 else
     echo "WARNING: login with the new password failed for '${user}'@'${host}'." >&2
-    echo "  - The old password is still valid (RETAIN CURRENT PASSWORD)." >&2
+    echo "  - The container still holds the OLD password; verify it matches the secret file." >&2
     echo "  - If the user was just created, the host may not match mysql.user." >&2
     exit 1
 fi
@@ -298,10 +272,8 @@ fi
 cat <<EOF
 
 Rotation applied for '${user}'@'${host}' (database '${db}').
-Both the old and the new password work right now.
+The OLD password no longer works from this point on.
 1) Recreate the container so it reads the new secret:
      $DOCKER_CMD compose up -d --force-recreate   (or Update in Portainer)
-2) Verify the application works.
-3) Finalize (revoke the old password):
-     ./sync-db-users.sh --discard-old ${service} ${secret_name} ${db} ${user}
+2) Verify the application works with the new value.
 EOF

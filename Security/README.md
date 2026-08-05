@@ -57,26 +57,28 @@ Examples:
 ./init-secrets.sh NginxProxyManager db_mysql_password@db
 ```
 
-## Rotating a database password (dual password)
+## Rotating a database password
 
 After writing an `@mysql` or `@db` secret, `init-secrets.sh` asks whether to
 create/update the database and user in MariaDB (default No). Answering `y` runs
-`Database/sync-db-users.sh`, which applies the new password with
-`RETAIN CURRENT PASSWORD`: the old and the new password are both valid, so the
-running service is never locked out. The script never drops databases or users;
-it is additive and idempotent.
+`Database/sync-db-users.sh`, which applies the new password with a plain
+`ALTER USER ... IDENTIFIED BY`. MariaDB has no dual-password (`RETAIN CURRENT
+PASSWORD` is MySQL 8 only): the change is immediate, so the flow is:
 
-Flow after the change is applied:
-
-1. Recreate the container so it reads the new secret
+1. Write the **new** value to the secret file first
+   (`./init-secrets.sh <Service> <secret_name>@db`, answering `y` to apply it).
+2. Recreate the container so it reads the new secret
    (`docker compose up -d --force-recreate`, or Update in Portainer).
-2. Verify the application works with the new value.
-3. Revoke the old password: `Database/sync-db-users.sh --discard-old <Service> <secret_name>`.
+3. Verify the application works with the new value.
 
-For the root password rotation the same dual-password pattern applies:
-`ALTER USER 'root'@'%' IDENTIFIED BY '<new>' RETAIN CURRENT PASSWORD`, then
-`... DISCARD OLD PASSWORD` once every container has been recreated and verified.
-See `Database/README.md`.
+Keep the rotation window short: between the `ALTER` and the recreation the
+running container still holds the old value in memory and keeps working, but
+anything that reconnects with the old value after the `ALTER` will fail. The
+script never drops databases or users; it is additive and idempotent.
+
+The root password rotation follows the same pattern (plain `ALTER USER
+'root'@'%' IDENTIFIED BY ...` over the socket, then recreate). See
+`Database/README.md`.
 
 ## Shared variables (global.env)
 
