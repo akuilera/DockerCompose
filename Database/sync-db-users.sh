@@ -53,8 +53,8 @@ Environment:
 
 Safety:
   - Never drops anything: only CREATE ... IF NOT EXISTS / ALTER / GRANT.
-  - Passwords travel via stdin or via `docker exec -e VAR` (value never in
-    the command line).
+  - Passwords travel via stdin into `docker exec` (value never on the
+    command line or environment, so `sudo` cannot strip it).
   - Re-running is safe (idempotent).
 EOF
     exit 1
@@ -166,12 +166,12 @@ escape_sql() {
 
 # Detect how we can reach MariaDB as root.
 #   socket : `docker exec` root over the local socket (no password needed).
-#   file   : password from the MariaDB root secret file (via `-e MYSQL_PWD`).
+#   file   : password from the MariaDB root secret file (passed via stdin).
 #   none   : no access (only acceptable in --dry-run).
 ROOT_MODE="none"
 ROOT_PW=""
 detect_root() {
-    if MYSQL_PWD="" $DOCKER_CMD exec -e MYSQL_PWD -i "${MARIADB_CONTAINER}" mariadb -uroot -e "SELECT 1" >/dev/null 2>&1; then
+    if printf '%s\n' "SELECT 1" | $DOCKER_CMD exec -i "${MARIADB_CONTAINER}" mariadb -uroot >/dev/null 2>&1; then
         ROOT_MODE="socket"
         return 0
     fi
@@ -189,7 +189,7 @@ detect_root() {
 run_root_sql() {
     local sql="$1"
     if [[ "${dry_run}" == "1" ]]; then
-        printf '%s\n' "${sql}"
+        printf '%s\n' "${sql_print:-${sql}}"
         return 0
     fi
     case "${ROOT_MODE}" in
@@ -197,7 +197,7 @@ run_root_sql() {
             printf '%s\n' "${sql}" | $DOCKER_CMD exec -i "${MARIADB_CONTAINER}" mariadb -uroot
             ;;
         file)
-            printf '%s\n' "${sql}" | MYSQL_PWD="${ROOT_PW}" $DOCKER_CMD exec -e MYSQL_PWD -i "${MARIADB_CONTAINER}" mariadb -uroot
+            { printf '%s\n' "${ROOT_PW}"; printf '%s\n' "${sql}"; } | $DOCKER_CMD exec -i "${MARIADB_CONTAINER}" bash -c 'IFS= read -r pw; MYSQL_PWD="$pw" mariadb -uroot'
             ;;
         *)
             die "No root access to MariaDB (no socket auth and no ${PATH_TO_SECRETS}/MariaDB/mysql_root_password). Run: ./init-secrets.sh MariaDB mysql_root_password"
@@ -211,10 +211,10 @@ user_exists() {
     local count=""
     case "${ROOT_MODE}" in
         socket)
-            count="$(MYSQL_PWD="" $DOCKER_CMD exec -e MYSQL_PWD -i "${MARIADB_CONTAINER}" mariadb -uroot -N -B -e "SELECT COUNT(*) FROM mysql.user WHERE User='${user}' AND Host='${host}';")"
+            count="$(printf '%s\n' "SELECT COUNT(*) FROM mysql.user WHERE User='${user}' AND Host='${host}';" | $DOCKER_CMD exec -i "${MARIADB_CONTAINER}" mariadb -uroot -N -B)"
             ;;
         file)
-            count="$(MYSQL_PWD="${ROOT_PW}" $DOCKER_CMD exec -e MYSQL_PWD -i "${MARIADB_CONTAINER}" mariadb -uroot -N -B -e "SELECT COUNT(*) FROM mysql.user WHERE User='${user}' AND Host='${host}';")"
+            count="$(printf '%s\n' "${ROOT_PW}" "SELECT COUNT(*) FROM mysql.user WHERE User='${user}' AND Host='${host}';" | $DOCKER_CMD exec -i "${MARIADB_CONTAINER}" bash -c 'IFS= read -r pw; MYSQL_PWD="$pw" mariadb -uroot -N -B')"
             ;;
         *) return 0 ;;
     esac
@@ -247,20 +247,27 @@ fi
 sql+=" GRANT ${grants} ON \`${db}\`.* TO '${user}'@'${host}';"
 sql+=" FLUSH PRIVILEGES;"
 
+if ((dry_run)) || ((verbose)); then
+    sql_print="${sql}"
+    if [[ -n "${pw_sql}" ]]; then
+        sql_print="${sql//"${pw_sql}"/"${pw_sql//?/*}"}"
+    fi
+fi
+
 if [[ "${dry_run}" == "1" ]]; then
-    printf '%s\n' "${sql}"
+    printf '%s\n' "${sql_print}"
     echo "# dry-run: nothing was executed"
     exit 0
 fi
 
 if [[ "${verbose}" == "1" ]]; then
-    printf '%s\n' "${sql}"
+    printf '%s\n' "${sql_print}"
 fi
 
 run_root_sql "${sql}"
 
 # ---- verify the new password actually works ---------------------------------------
-if MYSQL_PWD="${password}" $DOCKER_CMD exec -e MYSQL_PWD -i "${MARIADB_CONTAINER}" mariadb -u"${user}" -h127.0.0.1 -e "SELECT 1" >/dev/null 2>&1; then
+if printf '%s\n' "${password}" | $DOCKER_CMD exec -i "${MARIADB_CONTAINER}" bash -c 'IFS= read -r pw; MYSQL_PWD="$pw" mariadb -u"$1" -h127.0.0.1 -e "SELECT 1"' bash "${user}" >/dev/null 2>&1; then
     echo "OK: '${user}'@'${host}' logs in with the new password."
 else
     echo "WARNING: login with the new password failed for '${user}'@'${host}'." >&2

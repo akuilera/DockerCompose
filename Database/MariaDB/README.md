@@ -63,10 +63,12 @@ FLUSH PRIVILEGES;
 > the container and verify the application.
 
 Verify a password over TCP (interactive `-p` does not work through
-`docker exec`; the password must reach the client via `-e MYSQL_PWD`):
+`docker exec`; the password is forwarded via stdin so it never lands in the
+environment or `ps`):
 
 ```bash
-docker exec -e MYSQL_PWD='a_new_password' mariadb mariadb -uroot -h127.0.0.1 -e "SELECT 1"
+printf '%s\n' 'a_new_password' | docker exec -i mariadb bash -c \
+  'IFS= read -r pw; MYSQL_PWD="$pw" mariadb -uroot -h127.0.0.1 -e "SELECT 1"'
 ```
 
 `SELECT 1` prints two `1` columns when run without `-N`; that is normal.

@@ -53,11 +53,11 @@ Environment:
    `docker exec -i <container> mariadb -uroot`. This requires no root password
    (`root@localhost` uses `unix_socket`; see below).
 2. If that fails, it looks for `$PATH_TO_SECRETS/MariaDB/mysql_root_password`
-   and uses it via `MYSQL_PWD` inside `docker exec`. The password is forwarded
-   with `-e MYSQL_PWD`, never on the command line.
-3. Before writing anything it verifies that the new password actually logs in:
-   `docker exec -e MYSQL_PWD mariadb -u<user> ...`. It refuses to run if the
-   login fails.
+   and passes it through stdin into a `bash -c 'IFS= read -r pw; MYSQL_PWD="$pw"
+   mariadb -uroot'` wrapper. The password never touches the environment of the
+   outer shell, so `sudo` cannot strip it.
+3. Before writing anything it verifies that the new password actually logs in
+   over TCP (same stdin mechanism). It refuses to run if the login fails.
 
 ## Root access
 
@@ -90,11 +90,12 @@ The root secret is rotated with SQL (the image only reads
 4. Verify over TCP:
 
    ```bash
-   docker exec -e MYSQL_PWD='<new>' mariadb mariadb -uroot -h127.0.0.1 -e "SELECT 1"
+   printf '%s\n' '<new>' | docker exec -i mariadb bash -c \
+     'IFS= read -r pw; MYSQL_PWD="$pw" mariadb -uroot -h127.0.0.1 -e "SELECT 1"'
    ```
 
    (`-p` interactively does not work well through `docker exec`; the password
-   must reach the client via `-e MYSQL_PWD`.)
+   is forwarded via stdin so it never lands in the environment or `ps`.)
 5. Rollback, if ever needed, reuses the same flow with the previous value.
 
 ### Bootstrap variables (`MYSQL_DATABASE`, `MYSQL_USER`, `MYSQL_PASSWORD`)
