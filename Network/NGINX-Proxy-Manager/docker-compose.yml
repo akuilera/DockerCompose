@@ -32,6 +32,10 @@ services:
       - nextcloud-net
       - immich-net
       - apps-net
+    secrets:
+      - db_mysql_user
+      - db_mysql_password
+      - db_mysql_name
 
 secrets:
   db_mysql_user:
