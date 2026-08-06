@@ -110,7 +110,7 @@ always identical to `main`:
 If Forgejo dies, the repo is still recoverable because every change was also pushed to the GitHub mirror:
 
 1. In Portainer, deploy/redeploy the Forgejo stack from the mirror at `Git/Forgejo/docker-compose.yml`.
-2. Set the same environment variables as before (`USER_UID`, `USER_GID`, `MYSQL_*`, `PATH_TO_CONTAINERS`).
+2. Set the same environment variables as before (`USER_UID`, `USER_GID`, `PATH_TO_CONTAINERS`, `PATH_TO_SECRETS`; the DB credentials are read from the secret files under `PATH_TO_SECRETS/Forgejo/`).
 3. Restore the Forgejo data volume (repos, DB) from your server backups — data is never in the repo.
 4. Verify the recovered history: canonical history lives on `main`; the pre-migration history is archived on the `pre-migration` branch of the mirror.
 

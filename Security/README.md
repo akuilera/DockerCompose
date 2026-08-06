@@ -23,6 +23,39 @@ Sensitive values are never placed in `environment:` blocks. Instead:
 Values therefore do not appear in `docker inspect` output or in
 `/proc/<pid>/environ`.
 
+### Incident: top-level secrets do not grant access
+
+Compose secrets are not a "defined at the root, visible to every service"
+mechanism. A `secrets:` block at the top of the file only **defines** the
+secret; each service must also **request** it:
+
+```yaml
+secrets:                 # defines the secret (top level)
+  db_mysql_password:
+    file: "${PATH_TO_SECRETS}/SomeService/db_mysql_password"
+
+services:
+  app:
+    secrets:             # grants it to THIS service (per-service)
+      - db_mysql_password
+```
+
+If the per-service `secrets:` entry is missing, `docker compose` **deploys
+without error** but the file is never mounted at `/run/secrets/`. The service
+falls back to its default/empty value, which on a service that has been
+running for months looks like a factory reset (this is how NPM showed the
+first-run "create admin" screen while its data was intact — see
+`Network/NGINX-Proxy-Manager/README.md`).
+
+Before deploying any secrets-based compose, check all three:
+
+- every secret consumed by a service is listed under that service's
+  `secrets:` block;
+- the top-level `secrets:` file paths exist on the host under
+  `$PATH_TO_SECRETS/...`;
+- the service actually reads the mounted file (a `*_FILE` env var, or a
+  bootstrap script like NPM's `60-secrets.sh`).
+
 ## init-secrets.sh
 
 Creates the secret files for a service. Usage:

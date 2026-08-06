@@ -41,3 +41,36 @@ ready):
 
 After recreating the container, verify the DB user logs in with the secret
 value and the admin UI loads on `:81`.
+
+## Incident: "create admin" on first screen while data was intact
+
+The compose declared `db_mysql_*` at the top level but never granted them to
+the service (no `secrets:` entry under `nginx_proxy_manager`). Compose
+deployed without error, the files were never mounted at `/run/secrets/`, and
+NPM fell back to its default SQLite database — the UI showed the first-run
+"create admin" screen. The proxy hosts kept working because their `.conf`
+files were already persisted under `/data/nginx/proxy_host/`. The fix was the
+per-service grant (commit `ece0647`):
+
+```yaml
+    secrets:
+      - db_mysql_user
+      - db_mysql_password
+      - db_mysql_name
+```
+
+The general lesson (top-level secrets do not grant access) lives in
+`Security/README.md`.
+
+## Redeploying NPM safely
+
+**Do not redeploy NPM from a URL served by NPM itself.** The proxy config
+(hosts, TLS, networks) lives on this container, and the redeploy takes it
+down mid-request — it would kill the very connection you are using. Reach
+Portainer (or the node) through a surface NPM does not serve: `http://<server>:9000`,
+or the LAN/ZeroTier IP, and update the stack from there.
+
+The same rule applies to any service you manage through Portainer while
+Portainer is reached via the NPM proxy. Forgejo's own redeploy is safe to do
+from its URL because its control plane (Portainer) is independent of Forgejo;
+NPM is only its front end.
