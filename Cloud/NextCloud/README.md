@@ -109,10 +109,9 @@ Each NPM proxy host gives an independent Collabora entry point, so the editor an
 # From the LAN / your browser's network
 curl -k https://collabora.<suffix>.<domain>/hosting/discovery
 
-# WOPI callback: from INSIDE the Collabora container, NextCloud must be reachable.
-# The image has no curl, so use bash's /dev/tcp (here: the container service
-# `nextcloud` on `nextcloud-net`, plain HTTP; open the socket, send nothing):
-docker exec collabora bash -c 'exec 3<>/dev/tcp/nextcloud/80' && echo reachable
+# WOPI callback: NextCloud must reach Collabora, and vice versa. The Collabora
+# image is distroless (no shell/curl), so test from the NextCloud container:
+docker exec -u www-data nextcloud curl -s http://collabora:9980/hosting/discovery | head -c 200
 ```
 
 The definitive test is opening a document in NextCloud, editing and saving it, then watching `docker logs collabora` for WOPI errors.

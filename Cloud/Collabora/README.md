@@ -45,29 +45,36 @@ CollaboraOnline/online#3915), so its config is plain env vars on the stack
 
 ## Healthcheck
 
-The image ships **no `curl`**, so the healthcheck opens a TCP port instead. The
-form only opens the socket without sending data (`exec 3<>`); the previous
-`echo >` variant wrote a byte, which coolwsd closes with a reset (SIGPIPE) so
-the probe failed even while the server was fine:
+Recent `collabora/code` images (26.04.2+, 2026) are **distroless**: no shell,
+no `curl`/`wget`, on purpose (smaller attack surface — see the Collabora blog
+"A hardened, distroless container base"). The image ships its own built-in
+HEALTHCHECK, so the compose defines **none**:
 
 ```yaml
-    healthcheck:
-      test: [ "CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/127.0.0.1/9980'" ]
-      interval: 30s
-      timeout: 5s
-      retries: 3
-      start_period: 90s
+# baked into the image:
+HEALTHCHECK ["CMD", "/usr/bin/coolwsd", "--probe", "--use-env-vars"]
 ```
+
+`coolwsd --probe` reads the container's own config (honouring `extra_params` /
+`ssl.enable`), connects to the loopback `/livez` endpoint and exits 0 only on
+HTTP 200. Because there is **no `/bin/sh`**, any compose `healthcheck:` that
+shells out (`bash -c ...`, `echo > /dev/tcp`, ...) will fail with
+`exec: "/bin/sh": no such file or directory` and override the working one.
+Leave the image's probe in place.
 
 ## Verify
 
 ```bash
-# Discovery endpoint (must return a big XML with WOPI urlsrc)
+# From the host (port 9980 is published):
+curl -s http://127.0.0.1:9980/hosting/discovery | head -c 200
+curl -s http://127.0.0.1:9980/readyz?verbose     # per-check readiness, 200 = ok
+
+# From the public hostname (through NPM / Cloudflare):
 curl -k https://collabora.<suffix>.<domain>/hosting/discovery
 
-# WOPI callback: from INSIDE the container, NextCloud must be reachable
-# (open the socket, send nothing)
-docker exec collabora bash -c 'exec 3<>/dev/tcp/nextcloud/80' && echo reachable
+# WOPI callback: the Collabora container has no tools, so test from NextCloud's
+# container (which has curl) instead:
+docker exec -u www-data nextcloud curl -s http://collabora:9980/hosting/discovery | head -c 200
 ```
 
 Definitive test: open a document in NextCloud, edit and save it, then watch

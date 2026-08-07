@@ -19,10 +19,22 @@ container workloads.
   containers on a shared network.
 - Persistent data: `${PATH_TO_CONTAINERS}/ClamAV:/var/lib/clamav` (signature
   databases survive recreates).
-- Healthcheck: `clamdscan --ping`; generous `start_period` for the initial
-  signature download (first boot can take a while).
+- Healthcheck: `clamdscan --ping 3` (ping `clamd` up to 3 times; exits 0 on
+  `PONG`, uses the unix socket, no IPv6 involved). `--ping` **requires** an
+  attempt count in ClamAV ≥ 0.103 — bare `clamdscan --ping` errors out.
+  `start_period: 600s` covers the initial signature download on a fresh volume
+  (first boot can take minutes; `clamd` only starts after the DBs are ready).
 - Env vars come from `global.env` / the stack env (Portainer); see
   `.env.example`.
+
+> The image itself ships a HEALTHCHECK (`clamdcheck.sh`, a `nc localhost 3310`
+> ping). We override it because on Docker ≥ 26 `localhost` resolves to `::1` and
+> busybox `nc` cannot handle IPv6, so the built-in one fails even when `clamd`
+> is healthy. `clamdscan --ping` talks to the local unix socket and is immune.
+
+> `clamd` listens on TCP `3310` on all interfaces (the image's `clamd.conf`
+> leaves `TCPAddr` commented = default), so other containers reach it as
+> `clamav:3310`.
 
 ## Networks
 
@@ -66,8 +78,8 @@ docker exec -u www-data nextcloud php occ config:app:set files_antivirus av_port
 ## Verify
 
 ```bash
-# clamd answers
-docker exec clamav clamdscan --ping          # → PONG
+# clamd answers (exit 0 = PONG)
+docker exec clamav clamdscan --ping 3
 
 # EICAR test file (harmless signature sample), streamed via stdin
 printf '%s' 'X5O!P%@AP[4\PZX54(P^)7CC)7}$EICAR-STANDARD-ANTIVIRUS-TEST-FILE!$H+H*' \
@@ -85,6 +97,11 @@ admin → Antivirus should be green.
 
 ~1 GB while scanning (cold signatures on disk). A single instance serves every
 network instead of one per network.
+
+A freshclam update triggers a `clamd` database reload, which can briefly spike
+memory (a known heavy moment). On a tight server, if `clamd` ever gets OOM-killed
+on an update, override `clamd.conf` with `ConcurrentDatabaseReload no` (pause
+scanning instead of double-buffering the DB during reload).
 
 ## Note: Wazuh
 

@@ -10,12 +10,9 @@ services:
       - password=${COLLABORA_PASSWORD}
       - DONT_GEN_SSL_CERT=YES
       - extra_params=--o:ssl.enable=false --o:ssl.termination=true --o:logging.level=information
-    # healthcheck:
-    #   test: [ "CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/127.0.0.1/9980'" ]
-    #   interval: 30s
-    #   timeout: 5s
-    #   retries: 3
-    #   start_period: 90s
+    # No healthcheck here on purpose: the image is distroless (no shell) and
+    # ships its own HEALTHCHECK ("/usr/bin/coolwsd --probe" -> /livez). Defining
+    # one in compose would override it and fail, because there is no /bin/sh.
     ports:
       - "9980:9980"
     networks:
