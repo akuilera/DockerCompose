@@ -4,8 +4,6 @@ services:
     container_name: collabora
     hostname: collabora
     restart: unless-stopped
-    volumes:
-      - ${PATH_TO_CONTAINERS}/Collabora/:/etc/coolwsd/
     environment:
       - domain=${COLLABORA_DOMAIN}
       - username=admin
