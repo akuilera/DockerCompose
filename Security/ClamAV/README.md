@@ -75,6 +75,21 @@ docker exec -u www-data nextcloud php occ config:app:set files_antivirus av_host
 docker exec -u www-data nextcloud php occ config:app:set files_antivirus av_port --value=3310
 ```
 
+Background scanning of already-stored files (v6 uses boolean `av_background_scan`
+and `av_scan_interval` in seconds, both in the fast cache):
+
+```bash
+docker exec -u www-data nextcloud php occ config:app:set files_antivirus av_background_scan --value=1
+docker exec -u www-data nextcloud php occ config:app:set files_antivirus av_scan_interval --value=900
+docker exec -u www-data nextcloud php occ files_antivirus:background-scan --verbose
+```
+
+> The background scanner is only triggered by Nextcloud's **cron**. The
+> `nextcloud-cron` sidecar in `Cloud/NextCloud/docker-compose.yml` runs
+> `/cron.sh` (php cron.php) every 5 minutes; it mounts the same volumes/secrets
+> and joins the same networks as the `nextcloud` service. See
+> `Cloud/NextCloud/README.md` for the compose.
+
 ## Verify
 
 ```bash
@@ -93,13 +108,22 @@ After enabling daemon mode, upload a file in Nextcloud and watch
 `docker logs clamav` for scan lines; the antivirus status in Nextcloud
 admin → Antivirus should be green.
 
-> **EICAR via the Nextcloud UI** is the end-to-end test. Depending on the app's
-> infected-file action, the upload may still report "uploaded" and the file is
-> then removed (deleted or quarantined) — the telltale is a scan line in
-> `docker logs clamav` at that moment. If a file vanishes with **no** scan
-> line, the app is not reaching `clamd`: check
-> `occ config:app:list files_antivirus` (`av_mode`, `av_host`, `av_port`,
-> `av_scan_background`) and the Nextcloud log.
+> **EICAR via the Nextcloud UI** is the end-to-end test. Verified behavior on
+> `files_antivirus` v6 (Nextcloud 34): an infected **upload is blocked at
+> write time** — the UI reports "virus detected, upload aborted" and the file
+> is never stored. The on-write wrapper only runs after a stack recreate that
+> re-loads the app (a plain `occ` config change does not re-arm the hooks), so
+> after any change that touches the app, recreate the container before testing.
+>
+> If a stored file is found infected by a **background scan**, the action set
+> in `av_infected_action` applies (delete/quarantine/log). The background
+> scanner only runs if Nextcloud's **cron** is enabled — this repo ships a
+> `nextcloud-cron` sidecar (`/cron.sh`, every 5 min); without it, only
+> on-write scanning happens.
+>
+> If an upload vanishes with **no** scan line, the app is not reaching
+> `clamd`: check `occ config:list files_antivirus` (`av_mode`, `av_host`,
+> `av_port`, `av_background_scan`, `av_scan_interval`) and the Nextcloud log.
 
 ## RAM
 

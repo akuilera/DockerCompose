@@ -80,9 +80,25 @@ docker exec -u www-data nextcloud curl -s http://collabora:9980/hosting/discover
 Definitive test: open a document in NextCloud, edit and save it, then watch
 `docker logs collabora` for WOPI errors.
 
-On the NextCloud side, set the **Allow list for WOPI requests** (Office admin
-settings) to the IPs of the machine running Collabora (its LAN, ZeroTier and
-WireGuard IPs, as applicable).
+On the NextCloud side, the **Allow list for WOPI requests** (Office admin
+settings, app `richdocuments`) must contain the **source address NextCloud
+actually sees on WOPI callbacks**, not the IPs of the machine running
+Collabora. In this deployment Collabora reaches NextCloud through its public
+URL (via NPM and the published port), so the requests arrive from the **Docker
+host bridge gateway**, not from `collabora`'s container IP on `nextcloud-net`.
+
+If a document fails with "Unauthorized WOPI host", find the denied source in
+NextCloud's log and put it (or its CIDR) in the list:
+
+```bash
+docker logs nextcloud | grep -i "WOPI request denied"
+
+sudo docker exec -u www-data nextcloud php occ config:app:get richdocuments wopi_allowlist
+sudo docker exec -u www-data nextcloud php occ config:app:set richdocuments wopi_allowlist --value='<cidr-from-the-log>'
+```
+
+Comma-separated IPs/CIDRs, no spaces. `occ config:app:set` writes to the DB
+and is picked up by the next request — no redeploy needed.
 
 ## Incident: mount at `/etc/coolwsd/` crash-loops
 

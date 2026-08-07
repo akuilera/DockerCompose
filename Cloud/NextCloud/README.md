@@ -101,7 +101,13 @@ Each NPM proxy host gives an independent Collabora entry point, so the editor an
 
 - Admin settings → Office → "Use your own server": `https://collabora.<suffix>.<domain>` (the app derives `/hosting/discovery` from it). Pick the hostname whose network path is most reliable for your devices; the others still work independently.
 - The built-in `richdocumentscode` can stay enabled; while "your own server" is selected, the external Collabora is the one used.
-- Security: also set the **Allow list for WOPI requests** in the same settings page to the IPs of the machine running Collabora (its LAN, ZeroTier and WireGuard IPs, as applicable). Without it Nextcloud warns and lets any WOPI endpoint request files.
+- Security: also set the **Allow list for WOPI requests** in the same settings page to the **source IP that Nextcloud sees on WOPI callbacks** — not the IPs of the machine running Collabora. Because Collabora calls Nextcloud through its public URL (via NPM + the published port), the requests arrive from the **Docker host bridge gateway**, not from Collabora's container IP on `nextcloud-net`. If a document fails with "Unauthorized WOPI host", find the denied source and set it (or its CIDR):
+  ```bash
+  docker logs nextcloud | grep -i "WOPI request denied"
+  sudo docker exec -u www-data nextcloud php occ config:app:get richdocuments wopi_allowlist
+  sudo docker exec -u www-data nextcloud php occ config:app:set richdocuments wopi_allowlist --value='<cidr-from-the-log>'
+  ```
+  Without it Nextcloud warns and lets any WOPI endpoint request files.
 
 ### Verify
 
