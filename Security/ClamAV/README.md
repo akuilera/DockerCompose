@@ -93,6 +93,14 @@ After enabling daemon mode, upload a file in Nextcloud and watch
 `docker logs clamav` for scan lines; the antivirus status in Nextcloud
 admin → Antivirus should be green.
 
+> **EICAR via the Nextcloud UI** is the end-to-end test. Depending on the app's
+> infected-file action, the upload may still report "uploaded" and the file is
+> then removed (deleted or quarantined) — the telltale is a scan line in
+> `docker logs clamav` at that moment. If a file vanishes with **no** scan
+> line, the app is not reaching `clamd`: check
+> `occ config:app:list files_antivirus` (`av_mode`, `av_host`, `av_port`,
+> `av_scan_background`) and the Nextcloud log.
+
 ## RAM
 
 ~1 GB while scanning (cold signatures on disk). A single instance serves every

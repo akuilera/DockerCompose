@@ -35,6 +35,32 @@ services:
     networks:
       - db-net
       - nextcloud-net
+# Cron sidecar: runs /cron.sh (php cron.php every 5 min) so background jobs
+# (files_antivirus BackgroundScanner, trashbin expiry, activity, ...) actually run
+  nextcloud-cron:
+    container_name: nextcloud-cron
+    image: nextcloud:latest
+    restart: always
+    entrypoint: /cron.sh
+    volumes:
+      - ${PATH_TO_CLOUD_DATA}/nextcloud_data:/var/www/html/data
+      - ${PATH_TO_CONTAINERS}/Nextcloud/apps:/var/www/html/apps
+      - ${PATH_TO_CONTAINERS}/Nextcloud/config:/var/www/html/config
+      - ${PATH_TO_CONTAINERS}/Nextcloud/custom_apps:/var/www/html/custom_apps
+    environment:
+      - MYSQL_HOST=mariadb
+      - MYSQL_DATABASE_FILE=/run/secrets/db_mysql_name
+      - MYSQL_USER_FILE=/run/secrets/db_mysql_user
+      - MYSQL_PASSWORD_FILE=/run/secrets/db_mysql_password
+      - REDIS_HOST=redis
+      - OVERWRITEPROTOCOL=https
+    secrets:
+      - db_mysql_name
+      - db_mysql_user
+      - db_mysql_password
+    networks:
+      - db-net
+      - nextcloud-net
 
 secrets:
   db_mysql_name:
