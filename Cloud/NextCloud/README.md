@@ -111,8 +111,8 @@ curl -k https://collabora.<suffix>.<domain>/hosting/discovery
 
 # WOPI callback: from INSIDE the Collabora container, NextCloud must be reachable.
 # The image has no curl, so use bash's /dev/tcp (here: the container service
-# `nextcloud` on `nextcloud-net`, plain HTTP):
-docker exec collabora bash -c 'echo > /dev/tcp/nextcloud/80' && echo reachable
+# `nextcloud` on `nextcloud-net`, plain HTTP; open the socket, send nothing):
+docker exec collabora bash -c 'exec 3<>/dev/tcp/nextcloud/80' && echo reachable
 ```
 
 The definitive test is opening a document in NextCloud, editing and saving it, then watching `docker logs collabora` for WOPI errors.

@@ -45,15 +45,18 @@ CollaboraOnline/online#3915), so its config is plain env vars on the stack
 
 ## Healthcheck
 
-The image ships **no `curl`**, so the healthcheck opens a TCP port instead:
+The image ships **no `curl`**, so the healthcheck opens a TCP port instead. The
+form only opens the socket without sending data (`exec 3<>`); the previous
+`echo >` variant wrote a byte, which coolwsd closes with a reset (SIGPIPE) so
+the probe failed even while the server was fine:
 
 ```yaml
     healthcheck:
-      test: [ "CMD-SHELL", "bash -c 'echo > /dev/tcp/127.0.0.1/9980'" ]
+      test: [ "CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/127.0.0.1/9980'" ]
       interval: 30s
       timeout: 5s
       retries: 3
-      start_period: 30s
+      start_period: 90s
 ```
 
 ## Verify
@@ -63,7 +66,8 @@ The image ships **no `curl`**, so the healthcheck opens a TCP port instead:
 curl -k https://collabora.<suffix>.<domain>/hosting/discovery
 
 # WOPI callback: from INSIDE the container, NextCloud must be reachable
-docker exec collabora bash -c 'echo > /dev/tcp/nextcloud/80' && echo reachable
+# (open the socket, send nothing)
+docker exec collabora bash -c 'exec 3<>/dev/tcp/nextcloud/80' && echo reachable
 ```
 
 Definitive test: open a document in NextCloud, edit and save it, then watch

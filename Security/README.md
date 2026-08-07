@@ -10,6 +10,7 @@ Security-related services and the shared secrets tooling for the homelab.
 | `Password Manager/` | Vaultwarden (legacy)               | Older compose that read `DOMAIN` from a local `.env`; superseded by `Vaultwarden/`. |
 | `GoAccess/`         | GoAccess                           | Real-time web log analyzer for NGINX Proxy Manager (NPM data volume).  |
 | `FindMyDevice/`     | FMD server                         | Self-hosted FindMyDevice server.                                      |
+| `ClamAV/`           | ClamAV daemon (`clamd`)            | Scans files streamed by containers (Nextcloud `files_antivirus`). No published ports; joins all shared networks. See its [README](ClamAV/README.md). |
 | `init-secrets.sh`   | Secrets bootstrap script           | Creates the per-service secret files used by the services above.      |
 
 ## Secrets model

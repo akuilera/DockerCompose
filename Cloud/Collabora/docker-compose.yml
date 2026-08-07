@@ -11,11 +11,11 @@ services:
       - DONT_GEN_SSL_CERT=YES
       - extra_params=--o:ssl.enable=false --o:ssl.termination=true --o:logging.level=information
     healthcheck:
-      test: [ "CMD-SHELL", "bash -c 'echo > /dev/tcp/127.0.0.1/9980'" ]
+      test: [ "CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/127.0.0.1/9980'" ]
       interval: 30s
       timeout: 5s
       retries: 3
-      start_period: 30s
+      start_period: 90s
     ports:
       - "9980:9980"
     networks:
