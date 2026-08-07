@@ -5,6 +5,7 @@ global.env
 
 # Working tracking (kept local, never committed)
 TODO.md
+AGENTS.md
 
 # Operating systems
 .DS_Store
@@ -12,5 +13,6 @@ Thumbs.db
 
 # Editor
 *.swp
+*.kate-swp
 .idea/
 .vscode/

@@ -11,7 +11,7 @@ services:
       - DONT_GEN_SSL_CERT=YES
       - extra_params=--o:ssl.enable=false --o:ssl.termination=true --o:logging.level=information
     healthcheck:
-      test: [ "CMD", "curl", "-f", "http://localhost:9980/hosting/discovery" ]
+      test: [ "CMD-SHELL", "bash -c 'echo > /dev/tcp/127.0.0.1/9980'" ]
       interval: 30s
       timeout: 5s
       retries: 3
