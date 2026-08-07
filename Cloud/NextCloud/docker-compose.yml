@@ -17,6 +17,7 @@ services:
       - ${PATH_TO_CLOUD_DATA}/nextcloud_data:/var/www/html/data
       - ${PATH_TO_CONTAINERS}/Nextcloud/apps:/var/www/html/apps
       - ${PATH_TO_CONTAINERS}/Nextcloud/config:/var/www/html/config
+      - ${PATH_TO_DOCUMENTS}/Nextcloud/custom_apps:/var/www/html/custom_apps
     environment:
       - MYSQL_HOST=mariadb
       - MYSQL_DATABASE_FILE=/run/secrets/db_mysql_name
