@@ -3,6 +3,9 @@
 global.env
 *.log
 
+# Working tracking (kept local, never committed)
+TODO.md
+
 # Operating systems
 .DS_Store
 Thumbs.db

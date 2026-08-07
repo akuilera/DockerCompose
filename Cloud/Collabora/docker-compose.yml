@@ -1,0 +1,28 @@
+services:
+  collabora:
+    image: collabora/code
+    container_name: collabora
+    hostname: collabora
+    restart: unless-stopped
+    volumes:
+      - ${PATH_TO_CONTAINERS}/Collabora/:/etc/coolwsd/
+    environment:
+      - domain=${COLLABORA_DOMAIN}
+      - username=admin
+      - password=${COLLABORA_PASSWORD}
+      - DONT_GEN_SSL_CERT=YES
+      - extra_params=--o:ssl.enable=false --o:ssl.termination=true --o:logging.level=information
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:9980/hosting/discovery" ]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    ports:
+      - "9980:9980"
+    networks:
+      - nextcloud-net
+
+networks:
+  nextcloud-net:
+    external: true
