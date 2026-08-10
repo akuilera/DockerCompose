@@ -118,7 +118,11 @@ If Forgejo dies, the repo is still recoverable because every change was also pus
 
 ### Networks
 
-- **Host**: ZeroTier (maybe DuckDNS in the future)
+- **Host**: ZeroTier (maybe DuckDNS in the future) — also the **remote-access
+  transport**: this repo is designed to run **without opening any inbound port**
+  on the router (see `Base/Network/WireGuard/README.md` → "Remote access"), so
+  WireGuard clients reach the server over the ZeroTier mesh instead of a
+  port-forward
 - **Bridge**:
   - **vpn-net**: Wireguard + Pi-Hole
   - **proxy-net**: Cloudflared + GoAccess + NGINX Proxy Manager
@@ -150,6 +154,14 @@ If Forgejo dies, the repo is still recoverable because every change was also pus
 - **ClamAV is the exception**: it joins every network so any container can
   reach it as a scan endpoint. Its multi-network membership is unrelated to the
   roles above.
+- **No inbound ports**: the repo assumes the router exposes nothing. Public web
+  services leave outbound through the Cloudflare tunnel; admin/remote access
+  goes over ZeroTier. The WireGuard endpoint is the server's ZeroTier IP, so
+  the WG tunnel rides inside the ZeroTier mesh. Phones run ZeroTier alone (a
+  phone allows only one system VPN at a time — OS limit) and get Pi-hole as DNS
+  through it; only laptop/desktop run both WireGuard and ZeroTier. Removing the
+  ZeroTier dependency would require a host with a public IP (e.g. a paid VPS).
+  Details: `Base/Network/WireGuard/README.md`.
 
 #### Create networks (once, via CLI)
 

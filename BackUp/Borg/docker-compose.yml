@@ -25,9 +25,9 @@ services:
       - TZ=${TZ}
       - PUID=${PUID}
       - PGID=${PGID}
-      # - REDIS_URL=redis://192.168.1.100:6379/0  # External Redis
+      # - REDIS_URL=redis://<redis-host>:6379/0  # External Redis
       # With password:
-      # - REDIS_URL=redis://:password@192.168.1.100:6379/0
+      # - REDIS_URL=redis://:<redis-password>@<redis-host>:6379/0
       - REDIS_HOST=redis
       - REDIS_PORT=6379
       # - LOCAL_MOUNT_POINTS=${BACKUP_PATH},${SOURCE_PATH_1},${SOURCE_PATH_2}

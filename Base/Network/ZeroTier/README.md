@@ -1,3 +1,8 @@
+The network ID is provided as the Docker secret `zt_network`
+(`$PATH_TO_SECRETS/ZeroTier/zt_network`, created with
+`./Security/init-secrets.sh ZeroTier zt_network`). The container joins it via
+the entrypoint: `exec /entrypoint.sh "$(cat /run/secrets/zt_network)"`.
+
 You have to first make the YAML up like follows:
 ```
     cap_add:
@@ -9,7 +14,8 @@ You have to first make the YAML up like follows:
       - "9993/tcp"
 ```
 
-Then connect the server to ZeroTier with
+Then connect the server to ZeroTier with (manual join is only needed to debug
+an unjoined node — the compose joins automatically from the secret):
 
 - `zerotier-cli status` <- Should return 200
 - `zerotier-cli join <NETWORK_ID>`

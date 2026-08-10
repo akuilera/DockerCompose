@@ -53,7 +53,7 @@ What each option does:
 
 | Option | Meaning |
 | --- | --- |
-| `//SERVER_IP/SHARE_NAME` | Address and share name, e.g. `//192.168.1.10/Data`. |
+| `//SERVER_IP/SHARE_NAME` | Address and share name, e.g. `//<server-ip>/Data`. |
 | `/mnt/MOUNT_POINT` | Local mount point (create it in step 3). Under `/mnt` it mirrors the server layout and requires root. |
 | `credentials=/etc/samba/credentials` | Read user/password from this file instead of the command line. |
 | `uid=...`, `gid=...` | Your local user/group ids (`echo $(id -u) $(id -g)`) so you own the files. |
@@ -147,7 +147,7 @@ Only the placeholders change:
 
 | Placeholder | Meaning | Example |
 | --- | --- | --- |
-| `SERVER_IP` | Address of the SMB server | `192.168.1.10` |
+| `SERVER_IP` | Address of the SMB server | `<server-ip>` |
 | `SHARE_NAME` | Name of the share on the server | `Data` |
 | `MOUNT_POINT` | Local directory where it is mounted | `Data` |
 | `YOUR_SMB_USER` | User that authenticates against the server | `alice` |
