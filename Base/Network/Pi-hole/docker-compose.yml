@@ -1,0 +1,32 @@
+services:
+  pihole:
+    image: pihole/pihole
+    container_name: pihole
+    restart: unless-stopped
+    environment:
+      - TZ=Etc/UTC
+      # Answer DNS on every interface (required on a bridge network).
+      - FTLCONF_dns_listeningMode=ALL
+      # Read the admin password from the Docker secret (v6+).
+      - WEBPASSWORD_FILE=/run/secrets/webpassword
+    volumes:
+      - ${PATH_TO_CONTAINERS}/Pi-hole/etc-pihole:/etc/pihole
+      - ${PATH_TO_CONTAINERS}/Pi-hole/etc-dnsmasq.d:/etc/dnsmasq.d
+    ports:
+      - "53:53/tcp"
+      - "53:53/udp"
+      - "5353:80/tcp"
+    networks:
+      vpn-net:
+        ipv4_address: 10.8.1.3
+      # proxy-net: # optional: expose the admin UI through NPM
+    secrets:
+      - webpassword
+
+secrets:
+  webpassword:
+    file: "${PATH_TO_SECRETS}/Pi-hole/webpassword"
+
+networks:
+  vpn-net:
+    external: true

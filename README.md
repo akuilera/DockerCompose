@@ -133,13 +133,31 @@ If Forgejo dies, the repo is still recoverable because every change was also pus
   - **db-net**: MariaDB + NGINX Proxy Manager + NextCloud (used by Forgejo)
 - **None**: Nothing
 
+##### Why this layout
+
+- **`vpn-net` is the VPN segment, not "every service reachable over VPN"**. It
+  exists so wg-easy can terminate the tunnel (`10.8.1.2`) next to Pi-hole
+  (`10.8.1.3`), letting tunnel clients use it as DNS. VPN clients reach *every
+  other* service through wg-easy by L3 routing/NAT — those services do not need
+  to be on `vpn-net`. Services that want Pi-hole as resolver opt in: join
+  `vpn-net` and set `dns: [10.8.1.3, 127.0.0.11]` (the Docker resolver as
+  fallback keeps service-name lookups like `mariadb` working).
+- **`proxy-net` is the public-ingress segment** (Cloudflare tunnel → NPM →
+  services). A service is on `proxy-net` only when NPM must reach it (or it
+  must reach NPM). Administrative UIs (wg-easy, Pi-hole) deliberately stay off
+  it so they are not exposed through the tunnel; manage them over the VPN or
+  LAN.
+- **ClamAV is the exception**: it joins every network so any container can
+  reach it as a scan endpoint. Its multi-network membership is unrelated to the
+  roles above.
+
 #### Create networks (once, via CLI)
 
 Networks are created once and the compose files use them with `external: true`:
 
 ```bash
 docker network create --driver bridge proxy-net
-docker network create --driver bridge --subnet=10.8.0.0/24 vpn-net
+docker network create --driver bridge --subnet=10.8.1.0/24 vpn-net
 docker network create --driver bridge immich-net
 docker network create --driver bridge media-download-net
 docker network create --driver bridge apps-net

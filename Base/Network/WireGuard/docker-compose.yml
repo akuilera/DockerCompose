@@ -1,27 +1,20 @@
-version: "3.8"
-
 services:
   wg-easy:
-    environment:
-      # ⚠️ Change the server's hostname (clients will connect to):
-      - WG_HOST=${WIREGUARD_HOST}
-
-      # ⚠️ Change the Web UI Password:
-      - PASSWORD_HASH=${PASS_WIREGUARD}
-
-      # 💡 This is the Pi-Hole Container's IP Address
-      - WG_DEFAULT_DNS=10.8.1.3
-      - WG_DEFAULT_ADDRESS=10.8.0.x # "x" -> standard form from wg-easy
-      # - WG_DEFAULT_ADDRESS=10.8.0.1
-      # - WG_DEFAULT_ADDRESS=10.8.0.0/24
-    image: ghcr.io/wg-easy/wg-easy
+    image: ghcr.io/wg-easy/wg-easy:latest
     container_name: wg-easy
+    restart: unless-stopped
+    environment:
+      # The Web UI is served over HTTP (51821 / NPM upstream); v15 refuses to
+      # serve it unless INSECURE=true. Remove once HTTPS terminates on the
+      # container itself.
+      - INSECURE=true
+      # IPv4-only homelab (vpn-net has no IPv6): skip the IPv6 defaults.
+      - DISABLE_IPV6=true
     volumes:
-      -  ${PATH_TO_CONTAINERS}/WireGuard/.wg-easy:/etc/wireguard
+      - ${PATH_TO_CONTAINERS}/WireGuard/.wg-easy:/etc/wireguard
     ports:
       - "51820:51820/udp"
       - "51821:51821/tcp"
-    restart: unless-stopped
     cap_add:
       - NET_ADMIN
       - SYS_MODULE
@@ -32,27 +25,6 @@ services:
       vpn-net:
         ipv4_address: 10.8.1.2
 
-  pihole:
-    image: pihole/pihole
-    container_name: pihole
-    environment:
-      # ⚠️ Change the Web UI Password:
-      - WEBPASSWORD=${PASS_PIHOLE}
-    volumes:
-      - ${PATH_TO_CONTAINERS}/Pi-hole/etc-pihole:/etc/pihole
-      - ${PATH_TO_CONTAINERS}/Pi-hole/etc-dnsmasq.d:/etc/dnsmasq.d
-    ports:
-      - "53:53/tcp"
-      - "53:53/udp"
-      - "5353:80/tcp"
-    restart: unless-stopped
-    networks:
-      vpn-net:
-        ipv4_address: 10.8.1.3
-
 networks:
   vpn-net:
     external: true
-    # ipam:
-    #   config:
-    #     - subnet: 10.8.1.0/24
