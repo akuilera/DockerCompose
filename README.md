@@ -183,6 +183,17 @@ docker network create --driver bridge isolated_2
 
 Sensitive files (`global.env`, `.env`, databases and configuration folders) are excluded to protect your information.
 
+### 🔒 Configuration: no personal data in env vars
+
+**No personal data lives in environment variables.** Env vars are used only
+when strictly necessary (paths, UIDs, ports) and always through `${VAR}`
+placeholders that you fill locally. Anything personal (domains, URLs,
+usernames, credentials) is provided as a **Docker secret** and read with the
+app's file-variable syntax (`VAR__FILE=/run/secrets/<name>` for Forgejo-style
+apps, `VAR_FILE` for Vaultwarden). `.env.example` files contain placeholders
+only (`<domain>`, `example.com`, `/path/to/...`); real values never enter the
+repo.
+
 ## ⚖️ License
 
 This repository is licensed under the [MIT License](LICENSE). © 2026 Akuilera. You may use, copy, modify and redistribute it with attribution; the software is provided "as is", without warranty of any kind.

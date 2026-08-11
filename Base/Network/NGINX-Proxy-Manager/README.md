@@ -74,3 +74,12 @@ The same rule applies to any service you manage through Portainer while
 Portainer is reached via the NPM proxy. Forgejo's own redeploy is safe to do
 from its URL because its control plane (Portainer) is independent of Forgejo;
 NPM is only its front end.
+
+## Forgejo behind NPM: custom location `/`
+
+Forgejo must be served with a **custom location `/`** in its Proxy Host. By
+default NPM adds a proxy location with a redirect to `/` (a 301 to the base
+path) which breaks Forgejo when the app already expects to serve the whole
+tree under that path. Configuring `location /` (forwarding everything, with
+websockets enabled) keeps the app's own routing intact and matches the
+`FORGEJO__server__ROOT_URL` set in the compose.
