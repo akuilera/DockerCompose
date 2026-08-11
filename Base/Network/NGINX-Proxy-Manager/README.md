@@ -25,32 +25,20 @@ The DB credentials are read from files, not from the environment:
 | `DB_MYSQL_PASSWORD__FILE` | `$PATH_TO_SECRETS/NginxProxyManager/db_mysql_password` |
 | `DB_MYSQL_NAME__FILE`  | `$PATH_TO_SECRETS/NginxProxyManager/db_mysql_name` |
 
-NPM supports `__FILE` for any environment variable: the image's
-`60-secrets.sh` script reads each `*__FILE` path, strips the suffix and exports
-the file's content as the plain variable, so `DB_MYSQL_*` never appear in
-plaintext in the container environment.
+NPM supports `__FILE` for any environment variable: the image's `60-secrets.sh` script reads each `*__FILE` path, strips the suffix and exports the file's content as the plain variable, so `DB_MYSQL_*` never appear in plaintext in the container environment.
 
-Create the secret files (a single `@db` call writes all four `db_mysql_*`
-files; `--update-database` also applies the user to MariaDB when you are
-ready):
+Create the secret files (a single `@db` call writes all four `db_mysql_*` files; `--update-database` also applies the user to MariaDB when you are ready):
 
 ```bash
 ./Security/init-secrets.sh NginxProxyManager @db
 ./Security/init-secrets.sh --update-database NginxProxyManager   # optional, applies to MariaDB
 ```
 
-After recreating the container, verify the DB user logs in with the secret
-value and the admin UI loads on `:81`.
+After recreating the container, verify the DB user logs in with the secret value and the admin UI loads on `:81`.
 
 ## Incident: "create admin" on first screen while data was intact
 
-The compose declared `db_mysql_*` at the top level but never granted them to
-the service (no `secrets:` entry under `nginx_proxy_manager`). Compose
-deployed without error, the files were never mounted at `/run/secrets/`, and
-NPM fell back to its default SQLite database — the UI showed the first-run
-"create admin" screen. The proxy hosts kept working because their `.conf`
-files were already persisted under `/data/nginx/proxy_host/`. The fix was the
-per-service grant (commit `ece0647`):
+The compose declared `db_mysql_*` at the top level but never granted them to the service (no `secrets:` entry under `nginx_proxy_manager`). Compose deployed without error, the files were never mounted at `/run/secrets/`, and NPM fell back to its default SQLite database — the UI showed the first-run "create admin" screen. The proxy hosts kept working because their `.conf` files were already persisted under `/data/nginx/proxy_host/`. The fix was the per-service grant (commit `ece0647`):
 
 ```yaml
     secrets:
@@ -59,27 +47,14 @@ per-service grant (commit `ece0647`):
       - db_mysql_name
 ```
 
-The general lesson (top-level secrets do not grant access) lives in
-`Security/README.md`.
+The general lesson (top-level secrets do not grant access) lives in `Security/README.md`.
 
 ## Redeploying NPM safely
 
-**Do not redeploy NPM from a URL served by NPM itself.** The proxy config
-(hosts, TLS, networks) lives on this container, and the redeploy takes it
-down mid-request — it would kill the very connection you are using. Reach
-Portainer (or the node) through a surface NPM does not serve: `http://<server>:9000`,
-or the LAN/ZeroTier IP, and update the stack from there.
+**Do not redeploy NPM from a URL served by NPM itself.** The proxy config (hosts, TLS, networks) lives on this container, and the redeploy takes it down mid-request — it would kill the very connection you are using. Reach Portainer (or the node) through a surface NPM does not serve: `http://<server>:9000`, or the LAN/ZeroTier IP, and update the stack from there.
 
-The same rule applies to any service you manage through Portainer while
-Portainer is reached via the NPM proxy. Forgejo's own redeploy is safe to do
-from its URL because its control plane (Portainer) is independent of Forgejo;
-NPM is only its front end.
+The same rule applies to any service you manage through Portainer while Portainer is reached via the NPM proxy. Forgejo's own redeploy is safe to do from its URL because its control plane (Portainer) is independent of Forgejo; NPM is only its front end.
 
 ## Forgejo behind NPM: custom location `/`
 
-Forgejo must be served with a **custom location `/`** in its Proxy Host. By
-default NPM adds a proxy location with a redirect to `/` (a 301 to the base
-path) which breaks Forgejo when the app already expects to serve the whole
-tree under that path. Configuring `location /` (forwarding everything, with
-websockets enabled) keeps the app's own routing intact and matches the
-`FORGEJO__server__ROOT_URL` set in the compose.
+Forgejo must be served with a **custom location `/`** in its Proxy Host. By default NPM adds a proxy location with a redirect to `/` (a 301 to the base path) which breaks Forgejo when the app already expects to serve the whole tree under that path. Configuring `location /` (forwarding everything, with websockets enabled) keeps the app's own routing intact and matches the `FORGEJO__server__ROOT_URL` set in the compose.

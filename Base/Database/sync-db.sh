@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# sync-db-users.sh
+# sync-db.sh
 #
 # Applies (or rotates) a MariaDB user's password for a homelab service, using
 # the value already stored in the service's Docker secret file. The script is
@@ -21,7 +21,7 @@ set -euo pipefail
 
 usage() {
     cat <<'EOF'
-Usage: ./sync-db-users.sh [options] <Service> <secret_name> [<db> <user> [<grants>]]
+Usage: ./sync-db.sh [options] <Service> <secret_name> [<db> <user> [<grants>]]
 
 Applies (or rotates) the MariaDB user for a service, using the password stored
 in $PATH_TO_SECRETS/<Service>/<secret_name>.

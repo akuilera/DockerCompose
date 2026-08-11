@@ -9,8 +9,8 @@ services:
       - "139:139/tcp"
       - "445:445/tcp"
     environment:
-      - USERID=${UID} # UID del usuario
-      - GROUPID=${GID} # GID del grupo
+      - USERID=${UID} # User UID
+      - GROUPID=${GID} # Group GID
       - TZ=Etc/UTC
     volumes:
       - ${PATH_TO_DOCUMENTS}:${PATH_TO_DOCUMENTS}

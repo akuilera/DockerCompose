@@ -63,7 +63,7 @@ services:
     container_name: n8n
     restart: always
     ports:
-      - "5678:5678"  # Cambiado: accesible desde otros contenedores/NPM
+      - "5678:5678"  # Changed: reachable from other containers/NPM
     entrypoint:
       - /bin/sh
       - -c
@@ -74,8 +74,8 @@ services:
     environment:
       - N8N_ENFORCE_SETTINGS_FILE_PERMISSIONS=true
       - N8N_PORT=5678
-      - N8N_PROTOCOL=https  # NPM maneja HTTPS
-      - N8N_PROXY_HOPS=1  # Añadido para proxies
+      - N8N_PROTOCOL=https  # NPM handles HTTPS
+      - N8N_PROXY_HOPS=1  # Added for proxies
       - NODE_ENV=production
       - GENERIC_TIMEZONE=${GENERIC_TIMEZONE}
       - TZ=${GENERIC_TIMEZONE}
@@ -97,6 +97,6 @@ secrets:
 
 networks:
 #   default:
-#     name: proxy-net  # Usa la red de tu NPM existente
+#     name: proxy-net  # Use your existing NPM network
   proxy-net:
-    external: true # NPM ya debe estar en esta red
+    external: true # NPM must already be on this network

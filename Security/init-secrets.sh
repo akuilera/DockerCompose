@@ -46,7 +46,7 @@ Secret types:
 Options:
   --force              Recreate existing secrets without asking (deletes old value).
   --update-database    Apply the DB credentials stored by @db to MariaDB,
-                       running Base/Database/sync-db-users.sh. Reads db_mysql_name,
+                        running Base/Database/sync-db.sh. Reads db_mysql_name,
                        db_mysql_user and db_mysql_password; grants: ALL
                        PRIVILEGES. Combine with --dry-run to only print the
                        SQL that would be executed.
@@ -115,7 +115,7 @@ fi
 # 2. Otherwise source ../global.env (repo root, git-ignored) if present.
 # 3. Otherwise fall back to ~/.secrets and warn.
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-sync_script="${script_dir}/../Base/Database/sync-db-users.sh"
+sync_script="${script_dir}/../Base/Database/sync-db.sh"
 
 if [[ -z "${PATH_TO_SECRETS:-}" ]]; then
     global_env="${script_dir}/../global.env"
@@ -132,8 +132,8 @@ fi
 
 # update_database ------------------------------------------------------------
 # --update-database mode: read the db_mysql_* files written by @db and apply
-# them to MariaDB through Base/Database/sync-db-users.sh. No prompts, no password
-# on the command line (sync-db-users.sh reads the secret file itself).
+# them to MariaDB through Base/Database/sync-db.sh. No prompts, no password
+# on the command line (sync-db.sh reads the secret file itself).
 update_database() {
     local svc="$1"
     local dir="${PATH_TO_SECRETS}/${svc}"

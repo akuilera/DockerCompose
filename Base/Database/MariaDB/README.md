@@ -17,14 +17,7 @@ docker exec -it mariadb mariadb -uroot
 
 ## Secrets
 
-The compose mounts `$PATH_TO_SECRETS/MariaDB/mysql_root_password` at
-`/run/secrets/mysql_root_password` and reads it via `MYSQL_ROOT_PASSWORD_FILE`.
-The image only applies that value on the **first** bootstrap of the data
-directory; rotations are done with SQL (see "Change a user's password"). The
-other compose variables of the stock image (`MYSQL_DATABASE`, `MYSQL_USER`,
-`MYSQL_PASSWORD`) are no longer used: on an existing data directory they are
-ignored by the entrypoint, so removing them changes nothing. Databases and
-users are managed explicitly with `Database/sync-db-users.sh`.
+The compose mounts `$PATH_TO_SECRETS/MariaDB/mysql_root_password` at `/run/secrets/mysql_root_password` and reads it via `MYSQL_ROOT_PASSWORD_FILE`. The image only applies that value on the **first** bootstrap of the data directory; rotations are done with SQL (see "Change a user's password"). The other compose variables of the stock image (`MYSQL_DATABASE`, `MYSQL_USER`, `MYSQL_PASSWORD`) are no longer used: on an existing data directory they are ignored by the entrypoint, so removing them changes nothing. Databases and users are managed explicitly with `Database/sync-db.sh`.
 
 ## Best practices
 
@@ -57,14 +50,9 @@ ALTER USER 'app_user'@'%' IDENTIFIED BY 'a_new_password';
 FLUSH PRIVILEGES;
 ```
 
-> MariaDB has **no** dual-password (`RETAIN CURRENT PASSWORD` is MySQL 8 only):
-> the old password stops working the moment this statement runs. Do this for a
-> service only after its secret file already holds the new value, then recreate
-> the container and verify the application.
+> MariaDB has **no** dual-password (`RETAIN CURRENT PASSWORD` is MySQL 8 only): the old password stops working the moment this statement runs. Do this for a service only after its secret file already holds the new value, then recreate the container and verify the application.
 
-Verify a password over TCP (interactive `-p` does not work through
-`docker exec`; the password is forwarded via stdin so it never lands in the
-environment or `ps`):
+Verify a password over TCP (interactive `-p` does not work through `docker exec`; the password is forwarded via stdin so it never lands in the environment or `ps`):
 
 ```bash
 printf '%s\n' 'a_new_password' | docker exec -i mariadb bash -c \

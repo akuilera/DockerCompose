@@ -38,9 +38,7 @@ Create the secret files (a single `@db` call writes all four `db_mysql_*` files;
 ./Security/init-secrets.sh --update-database NextCloud   # optional, applies to MariaDB
 ```
 
-> **Keep the same DB name and user.** The script only does
-> `ALTER USER ... IDENTIFIED BY`; it does not create users. Use the same
-> `dbname` / `dbuser` that are already in `config.php`.
+> **Keep the same DB name and user.** The script only does `ALTER USER ... IDENTIFIED BY`; it does not create users. Use the same `dbname` / `dbuser` that are already in `config.php`.
 
 ### Rotation is not enough: `config.php` must change too
 
@@ -66,9 +64,7 @@ If `@'localhost'` exists, drop it (or rotate it too).
 
 ## Updating NextCloud
 
-Updates go through the repo → Forgejo → Portainer:
-
-1. Edit the compose here, commit and push (`git push origin main`).
+1. Edit the compose here, commit and push.
 2. In Portainer, open the **NextCloud** stack → **Update** (pull + recreate).
 3. After a major version bump, run the upgrade from the CLI if the entrypoint did not:
    ```bash
@@ -124,13 +120,7 @@ The definitive test is opening a document in NextCloud, editing and saving it, t
 
 Admin console: `https://collabora.<suffix>.<domain>/browser/dist/admin/admin.html` (user `admin`, password = `COLLABORA_PASSWORD`).
 
-> **Incident: mount at `/etc/coolwsd/` crash-loops.** Bind-mounting a directory
-> over `/etc/coolwsd/` hides the image's default `coolwsd.xml`; the entrypoint
-> does not regenerate it and the container restarts forever with
-> `Failed to initialize COOLWSD: File not found: /etc/coolwsd/coolwsd.xml`
-> (exit 78). Configure via env vars only; if a custom `coolwsd.xml` is ever
-> needed, mount a **single file** (`coolwsd.xml:/etc/coolwsd/coolwsd.xml`)
-> seeded from the image (`docker cp`).
+> **Incident: mount at `/etc/coolwsd/` crash-loops.** Bind-mounting a directory over `/etc/coolwsd/` hides the image's default `coolwsd.xml`; the entrypoint does not regenerate it and the container restarts forever with `Failed to initialize COOLWSD: File not found: /etc/coolwsd/coolwsd.xml` (exit 78). Configure via env vars only; if a custom `coolwsd.xml` is ever needed, mount a **single file** (`coolwsd.xml:/etc/coolwsd/coolwsd.xml`) seeded from the image (`docker cp`).
 
 ## Incident: lost apps after an update
 
