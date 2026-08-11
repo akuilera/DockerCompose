@@ -4,7 +4,11 @@ Containerized ClamAV (`clamd` + `freshclam`) that scans files **streamed** to it
 
 ## Why a container when the host already runs ClamAV?
 
-The host ClamAV daemon protects the OS itself (on-access via `clamonacc`). The container is a **separate `clamd` instance**: it listens on its own TCP port `3310` inside the Docker network namespace, with **no published ports**, so it never conflicts with the host daemon (which uses the systemd unix socket). They are complementary — the host one scans the system, this one scans container workloads.
+This repo assumes three complementary layers, none of which duplicates another:
+
+1. **Host `clamd` + `clamonacc`** — protects the OS itself and scans the container data trees (the bind-mounted folders) on-access, in real time, as files are opened.
+2. **Container `clamd`** — a separate instance that scans files **streamed** to it over the network (Nextcloud's `files_antivirus`). It listens on TCP `3310` inside the Docker network namespace, with **no published ports**, so it never conflicts with the host daemon (which uses the systemd unix socket).
+3. **Scheduled scans** — cover files that are stored and never touched again; on-access only sees files that are actually opened. See "Scheduled scans" below.
 
 ## Configuration
 
@@ -20,9 +24,9 @@ The host ClamAV daemon protects the OS itself (on-access via `clamonacc`). The c
 
 ## Networks
 
-The container joins **all current shared networks** (`apps-net`, `db-net`, `files-net`, `fmd-net`, `heimdall-net`, `immich-net`, `nextcloud-net`, `proxy-net`, `vpn-net`), so every existing service already reaches it as `clamav` on their common network (e.g. Nextcloud on `nextcloud-net`).
+The container joins **only the networks of its real consumers** — currently `nextcloud-net` (Nextcloud's `files_antivirus` reaches it as `clamav:3310`). Least privilege: `clamd` is an unauthenticated TCP service, so every extra network is an unnecessary surface for any container on it.
 
-When a **new network** is created later, add it to this stack and recreate the container:
+When a **new consumer** appears later, add its network to this stack and recreate the container:
 
 ```yaml
     networks:
@@ -34,7 +38,35 @@ networks:
     name: new-net
 ```
 
-No port is exposed, so the extra attachment is harmless on services that never scan anything.
+The scheduled scans use no network at all: they run through `docker exec` against the local mounts.
+
+## Scheduled scans
+
+Streaming (Nextcloud) and on-access (host) scanning only cover files that are **touched**. Files that land in a container's data folder and are never opened again (e.g. a file a webhook drops into `n8n/files`) need a periodic full scan.
+
+The intended way to add one is:
+
+1. Mount the service's data folder **read-only** into this container:
+
+   ```yaml
+   volumes:
+     - "${PATH_TO_CONTAINERS}/n8n/files:/scan/n8n:ro"
+   ```
+
+   (one mount per folder; recreate the container afterwards)
+
+2. Add a **root** cron job that streams the scan to the container's `clamd`:
+
+   ```
+   0 3 * * 6 root docker exec clamav clamdscan --infected /scan/n8n >> /var/log/clamav-scan.log 2>&1
+   ```
+
+   - `clamdscan` recurses into directories; `--infected` prints only hits.
+   - Exit codes: `0` clean, `1` infected found, `2` error (all land in the log).
+   - Manual run: `docker exec clamav clamdscan --infected /scan/n8n`.
+   - Add more folders with one more mount + path argument (or another cron line).
+
+This repo ships the `n8n` example. It is a **root** cron because `docker exec` from the host requires it; the scan itself runs as the container's `clamd`.
 
 ## Nextcloud
 
@@ -81,7 +113,7 @@ After enabling daemon mode, upload a file in Nextcloud and watch `docker logs cl
 
 ## RAM
 
-~1 GB while scanning (cold signatures on disk). A single instance serves every network instead of one per network.
+~1 GB while scanning (cold signatures on disk). A single instance serves every consumer over its own network.
 
 A freshclam update triggers a `clamd` database reload, which can briefly spike memory (a known heavy moment). On a tight server, if `clamd` ever gets OOM-killed on an update, override `clamd.conf` with `ConcurrentDatabaseReload no` (pause scanning instead of double-buffering the DB during reload).
 

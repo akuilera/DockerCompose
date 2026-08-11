@@ -90,7 +90,7 @@ On a cold start (reboot, power loss, DR) bring the database up first, because NG
 
 - **`vpn-net` is the VPN segment, not "every service reachable over VPN"**. It exists so wg-easy can terminate the tunnel (`10.8.1.2`) next to Pi-hole (`10.8.1.3`), letting tunnel clients use it as DNS. VPN clients reach *every other* service through wg-easy by L3 routing/NAT — those services do not need to be on `vpn-net`. Services that want Pi-hole as resolver opt in: join `vpn-net` and set `dns: [10.8.1.3, 127.0.0.11]` (the Docker resolver as fallback keeps service-name lookups like `mariadb` working).
 - **`proxy-net` is the public-ingress segment** (Cloudflare tunnel → NPM → services). A service is on `proxy-net` only when NPM must reach it (or it must reach NPM). Administrative UIs (wg-easy, Pi-hole) deliberately stay off it so they are not exposed through the tunnel; manage them over the VPN or LAN.
-- **ClamAV is the exception**: it joins every network so any container can reach it as a scan endpoint. Its multi-network membership is unrelated to the roles above.
+- **ClamAV joins only its consumers' networks** (currently `nextcloud-net`): a scan endpoint is reachable from the segments that actually scan, not from all of them. See `Security/ClamAV/README.md`.
 - **No inbound ports**: the repo assumes the router exposes nothing. Public web services leave outbound through the Cloudflare tunnel; admin/remote access goes over ZeroTier. The WireGuard endpoint is the server's ZeroTier IP, so the WG tunnel rides inside the ZeroTier mesh. Phones run ZeroTier alone (a phone allows only one system VPN at a time — OS limit) and get Pi-hole as DNS through it; only laptop/desktop run both WireGuard and ZeroTier. Removing the ZeroTier dependency would require a host with a public IP (e.g. a paid VPS). Details: `Base/Network/WireGuard/README.md`.
 
 #### Create networks (once)
@@ -119,6 +119,8 @@ Every compose file uses `external: true`, so **the networks must already exist b
 The server keeps a working copy of the repo, synced with `main`:
 
 - A **cron job** runs every few minutes: `git -C "<server path>" pull --ff-only`, with the log in a file (e.g. `~/.cache/mirror-dockercompose.log`).
+- A second **root cron** runs the weekly ClamAV scan of the container data folders: `0 3 * * 6 root docker exec clamav clamdscan --infected /scan/n8n >> /var/log/clamav-scan.log 2>&1` (see `Security/ClamAV/README.md` → "Scheduled scans").
+- The host `clamonacc` also scans the container data trees on-access as files are opened, so the weekly job only needs to cover files that are never touched again.
 - The working copy contains **only** versioned content. If a pull fails (e.g. an untracked file would be overwritten), the error lands in the log and the folder stays as-is until it is fixed.
 
 ### Disaster recovery (DR)

@@ -6,6 +6,7 @@ services:
     restart: unless-stopped
     volumes:
       - "${PATH_TO_CONTAINERS}/ClamAV:/var/lib/clamav"
+      - "${PATH_TO_CONTAINERS}/n8n/files:/scan/n8n:ro"
     healthcheck:
       test: [ "CMD-SHELL", "clamdscan --ping 3" ]
       interval: 60s
@@ -13,41 +14,9 @@ services:
       retries: 3
       start_period: 180s
     networks:
-      - apps-net
-      - db-net
-      - files-net
-      - fmd-net
-      - heimdall-net
-      - immich-net
       - nextcloud-net
-      - proxy-net
-      - vpn-net
 
 networks:
-  apps-net:
-    external: true
-    name: apps-net
-  db-net:
-    external: true
-    name: db-net
-  files-net:
-    external: true
-    name: files-net
-  fmd-net:
-    external: true
-    name: fmd-net
-  heimdall-net:
-    external: true
-    name: heimdall-net
-  immich-net:
-    external: true
-    name: immich-net
   nextcloud-net:
     external: true
     name: nextcloud-net
-  proxy-net:
-    external: true
-    name: proxy-net
-  vpn-net:
-    external: true
-    name: vpn-net
