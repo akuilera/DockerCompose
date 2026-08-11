@@ -16,20 +16,27 @@ services:
       - ${PATH_TO_DOCUMENTS}:${PATH_TO_DOCUMENTS}
       - ${PATH_TO_CONTAINERS}:${PATH_TO_CONTAINERS}
       # - ${PATH_TO_DOCUMENTS_3}:${PATH_TO_DOCUMENTS_3}
-    # command: '-u "${USER_NAME};${USER_PASSWORD}" -s "${USER_NAME};${PATH_TO_DOCUMENTS};yes;no;no;${USER_NAME}"' # The USER_NAME variable should be the same that you use in your host (the same with the UID)
-    # command: '-u "${USER_NAME};${USER_PASSWORD}" -s "${USER_NAME};${PATH_TO_DOCUMENTS};yes;no;no;${USER_NAME};${USER_NAME};${USER_NAME};${USER_NAME}" -p'
-    # command: >
-    #   bash -c "
-    #   chown -R 1000:1000 /mnt/usb/emm &&
-    #   samba.sh -u 'emm;zxc' -s 'shared;/mnt/usb/emm;yes;no;no;emm'"
-    command: >
-      -u "${USER_NAME};${USER_PASSWORD}"
-      -s "Documentos;${PATH_TO_DOCUMENTS};yes;no;no;${USER_NAME}"
-      -s "Data Containers;${PATH_TO_CONTAINERS};yes;no;no;${USER_NAME}"
-    #   -s "Linux;${PATH_TO_DOCUMENTS_3};yes;no;no;${USER_NAME}"
+    entrypoint:
+      - /bin/sh
+      - -c
+      - >
+        exec /sbin/tini -- /usr/bin/samba.sh
+        -u "$(cat /run/secrets/samba_user);$(cat /run/secrets/samba_password)"
+        -s "Documentos;${PATH_TO_DOCUMENTS};yes;no;no;$(cat /run/secrets/samba_user)"
+        -s "Data Containers;${PATH_TO_CONTAINERS};yes;no;no;$(cat /run/secrets/samba_user)"
+    #   -s "Linux;${PATH_TO_DOCUMENTS_3};yes;no;no;$(cat /run/secrets/samba_user)"
+    secrets:
+      - samba_user
+      - samba_password
     networks:
        # - file-sharing-net
        - files-net
+
+secrets:
+  samba_user:
+    file: "${PATH_TO_SECRETS}/Samba/samba_user"
+  samba_password:
+    file: "${PATH_TO_SECRETS}/Samba/samba_password"
 
 networks:
   # file-sharing-net:

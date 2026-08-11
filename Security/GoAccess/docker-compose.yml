@@ -3,12 +3,20 @@ services:
     image: justsky/goaccess-for-nginxproxymanager:latest
     container_name: goaccess
     restart: unless-stopped
+    entrypoint:
+      - /bin/sh
+      - -c
+      - >
+        export BASIC_AUTH_USERNAME="$(cat /run/secrets/goaccess_user)"
+        export BASIC_AUTH_PASSWORD="$(cat /run/secrets/goaccess_password)"
+        exec /sbin/tini -- /goan/start.sh
     environment:
         - TZ=Etc/UTC
         #- SKIP_ARCHIVED_LOGS=False #optional
         - BASIC_AUTH=True # False #optional
-        - BASIC_AUTH_USERNAME=${BASIC_AUTH_USERNAME} #optional
-        - BASIC_AUTH_PASSWORD=${BASIC_AUTH_PASSWORD} #optional
+    secrets:
+      - goaccess_user
+      - goaccess_password
     ports:
         - '7880:7880'
     volumes:
@@ -18,6 +26,12 @@ services:
         # - ./data/npm_data/logs/proxy-host-1_access.log:/opt/log/proxy-host-1_access.log
     networks:
       - proxy-net
+
+secrets:
+  goaccess_user:
+    file: "${PATH_TO_SECRETS}/GoAccess/goaccess_user"
+  goaccess_password:
+    file: "${PATH_TO_SECRETS}/GoAccess/goaccess_password"
 
 networks:
   proxy-net:

@@ -64,16 +64,23 @@ services:
     restart: always
     ports:
       - "5678:5678"  # Cambiado: accesible desde otros contenedores/NPM
+    entrypoint:
+      - /bin/sh
+      - -c
+      - >
+        export N8N_HOST="$(cat /run/secrets/n8n_host)"
+        export WEBHOOK_URL="https://$(cat /run/secrets/n8n_host)/"
+        exec /sbin/tini -- /docker-entrypoint.sh
     environment:
       - N8N_ENFORCE_SETTINGS_FILE_PERMISSIONS=true
-      - N8N_HOST=${SUBDOMAIN}.${DOMAIN_NAME}
       - N8N_PORT=5678
       - N8N_PROTOCOL=https  # NPM maneja HTTPS
       - N8N_PROXY_HOPS=1  # Añadido para proxies
       - NODE_ENV=production
-      - WEBHOOK_URL=https://${SUBDOMAIN}.${DOMAIN_NAME}/
       - GENERIC_TIMEZONE=${GENERIC_TIMEZONE}
       - TZ=${GENERIC_TIMEZONE}
+    secrets:
+      - n8n_host
     volumes:
       # - ${PATH_TO_CONTAINERS}/n8n:/home/node/.n8n
       - ${PATH_TO_CONTAINERS}/n8n/data:/home/node/.n8n
@@ -83,6 +90,10 @@ services:
 
 # volumes:
 #   n8n_data:
+
+secrets:
+  n8n_host:
+    file: "${PATH_TO_SECRETS}/n8n/n8n_host"
 
 networks:
 #   default:
