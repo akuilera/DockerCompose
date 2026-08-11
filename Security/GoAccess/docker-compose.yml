@@ -6,10 +6,10 @@ services:
     entrypoint:
       - /bin/sh
       - -c
-      - >
+      - |
         export BASIC_AUTH_USERNAME="$(cat /run/secrets/goaccess_user)"
         export BASIC_AUTH_PASSWORD="$(cat /run/secrets/goaccess_password)"
-        exec /sbin/tini -- /goan/start.sh
+        exec tini -- /goan/start.sh
     environment:
         - TZ=Etc/UTC
         #- SKIP_ARCHIVED_LOGS=False #optional

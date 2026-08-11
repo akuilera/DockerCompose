@@ -13,11 +13,16 @@ n8n:
 entrypoint:
   - /bin/sh
   - -c
-  - >
+  - |
     export N8N_HOST="$(cat /run/secrets/n8n_host)"
     export WEBHOOK_URL="https://$(cat /run/secrets/n8n_host)/"
-    exec /sbin/tini -- /docker-entrypoint.sh
+    exec tini -- /docker-entrypoint.sh
 ```
+
+> The `|` block scalar is mandatory: `>` would fold the script into a single
+> line and `export` would swallow the rest as variable names, crashing the
+> container on start. `tini` is resolved from `PATH` (Alpine and Debian put it
+> in different directories).
 
 Create the secret:
 

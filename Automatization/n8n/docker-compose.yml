@@ -67,10 +67,10 @@ services:
     entrypoint:
       - /bin/sh
       - -c
-      - >
+      - |
         export N8N_HOST="$(cat /run/secrets/n8n_host)"
         export WEBHOOK_URL="https://$(cat /run/secrets/n8n_host)/"
-        exec /sbin/tini -- /docker-entrypoint.sh
+        exec tini -- /docker-entrypoint.sh
     environment:
       - N8N_ENFORCE_SETTINGS_FILE_PERMISSIONS=true
       - N8N_PORT=5678
