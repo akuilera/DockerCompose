@@ -11,6 +11,10 @@ AGENTS.md
 .DS_Store
 Thumbs.db
 
+# Jupyter / Notebooks
+.ipynb_checkpoints/
+.virtual_documents/
+
 # Editor
 *.swp
 *.kate-swp
