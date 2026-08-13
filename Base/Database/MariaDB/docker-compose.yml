@@ -26,12 +26,12 @@ services:
       timeout: 10s
       retries: 5
 
-  redis:
-    container_name: redis
-    image: redis:alpine
-    restart: always
-    networks:
-      - db-net
+  # redis:
+  #   container_name: redis
+  #   image: redis:alpine
+  #   restart: always
+  #   networks:
+  #     - db-net
 
 secrets:
   mysql_root_password:

@@ -7,7 +7,7 @@ Quick reference for the NextCloud instance (private cloud: files, calendars, con
 - **Container**: `nextcloud`
 - **Image**: `nextcloud:latest`
 - **Public port**: `8080` → `80` (behind NGINX Proxy Manager over HTTPS)
-- **Networks**: `nextcloud-net`, `db-net` (MariaDB), Redis (`redis`)
+- **Networks**: `nextcloud-net`, `db-net` (MariaDB), shared Redis (`redis` — `Database/Redis/`, same network)
 - **Web**: `https://<domain>/` (reverse-proxied)
 
 ## Mounts (persistent data)

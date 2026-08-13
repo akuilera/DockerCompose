@@ -29,7 +29,7 @@ This repository holds the full Docker Compose configuration of a Homelab (Debian
 ├── Automatization/                <- n8n
 ├── BackUp/                        <- Borg
 ├── Base/
-│   ├── Database/                  <- MariaDB + sync-db.sh (DB user rotation)
+│   ├── Database/                  <- MariaDB, Redis + sync-db.sh (DB user rotation)
 │   ├── Network/                   <- Cloudflared, NGINX Proxy Manager, WireGuard, ZeroTier, ...
 │   └── Service Delivery/          <- Portainer
 ├── Cloud/                         <- NextCloud, Collabora, Samba, FileBrowser, ...
@@ -62,9 +62,9 @@ Each service folder holds its `docker-compose.yml` and a `.env.example` template
 
 ### Boot order / Dependencies
 
-On a cold start (reboot, power loss, DR) bring the database up first, because NGINX Proxy Manager (and several services) cannot start without it:
+On a cold start (reboot, power loss, DR) bring the database layer up first, because NGINX Proxy Manager (and several services) cannot start without it:
 
-1. **MariaDB** — first; everything below depends on it.
+1. **MariaDB + Redis** — first. MariaDB: everything below depends on it. Redis (`Database/Redis/`): Nextcloud and Borg-UI use it (locking/cache and the backup scheduler); a cache, so start it together with MariaDB rather than after.
 2. **Networking layer** — ZeroTier (remote-access transport) + NGINX Proxy Manager (reverse proxy).
 3. **The rest** — deployable and reachable from here on.
 
@@ -76,7 +76,7 @@ On a cold start (reboot, power loss, DR) bring the database up first, because NG
 - **Bridge**:
   - **vpn-net**: WireGuard + Pi-hole — the VPN segment (subnet `10.8.1.0/24`)
   - **proxy-net**: Cloudflared + GoAccess + NGINX Proxy Manager — the public-ingress segment
-  - **db-net**: MariaDB + NGINX Proxy Manager + NextCloud + Vaultwarden + Forgejo + WordPress + Borg — the database backend
+  - **db-net**: MariaDB + Redis + NGINX Proxy Manager + NextCloud + Vaultwarden + Forgejo + WordPress + Borg — the database backend
   - **nextcloud-net**: NextCloud + Collabora + NGINX Proxy Manager
   - **immich-net**: Immich (+ machine-learning, Redis, Postgres) + NGINX Proxy Manager
   - **apps-net**: OpenSpeedTest + Portainer + NGINX Proxy Manager
@@ -119,8 +119,10 @@ Every compose file uses `external: true`, so **the networks must already exist b
 The server keeps a working copy of the repo, synced with `main`:
 
 - A **cron job** runs every few minutes: `git -C "<server path>" pull --ff-only`, with the log in a file (e.g. `~/.cache/mirror-dockercompose.log`).
-- A second **root cron** runs the weekly ClamAV scan of the container data folders: `0 3 * * 6 root docker exec clamav clamdscan --infected /scan/n8n >> /var/log/clamav-scan.log 2>&1` (see `Security/ClamAV/README.md` → "Scheduled scans").
-- The host `clamonacc` also scans the container data trees on-access as files are opened, so the weekly job only needs to cover files that are never touched again.
+- Two **root cron** jobs run ClamAV on a schedule (see `Security/ClamAV/README.md` → "Scheduled scans"):
+  - **Saturdays 03:00** — `clamdscan` of the container data folders, streamed to the container's daemon: `0 3 * * 6 root docker exec clamav clamdscan --infected /scan/n8n >> /var/log/clamav-scan.log 2>&1`.
+  - **Tuesdays 03:00** — full-system `clamscan` of `/` (OS + home + document/media trees), staggered away from the backup window: `0 3 * * 2 root nice -n 15 ionice -c3 clamscan -r -i --exclude-dir=/proc --exclude-dir=/sys --exclude-dir=/dev --exclude-dir=/run --exclude-dir=/var/lib/docker --exclude-dir=/var/lib/clamav --exclude-dir=<backup-path> / >> /var/log/clamav-full-scan.log 2>&1`.
+- The host `clamonacc` also scans the container data trees on-access as files are opened, so the scheduled jobs only need to cover files that are never touched again.
 - The working copy contains **only** versioned content. If a pull fails (e.g. an untracked file would be overwritten), the error lands in the log and the folder stays as-is until it is fixed.
 
 ### Disaster recovery (DR)

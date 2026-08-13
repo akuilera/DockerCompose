@@ -1,13 +1,16 @@
 # Database
 
-MariaDB (and the tooling for its users/passwords).
+MariaDB, Redis and the tooling for the DB users/passwords.
 
 ## Services
 
 | Folder          | Service                            | Notes                                                                 |
 |-----------------|------------------------------------|-----------------------------------------------------------------------|
 | `MariaDB/`      | MariaDB                            | Central database. Reads `MYSQL_ROOT_PASSWORD_FILE` from a Docker secret. |
+| `Redis/`        | Redis                              | Shared in-memory store for Nextcloud (locks/cache) and Borg-UI (scheduler). |
 | `sync-db.sh` | DB user rotation script          | Creates/updates databases and users. Additive and idempotent.         |
+
+See `Redis/README.md` for the shared Redis (consumers, persistent volume, deploy order).
 
 ## sync-db.sh
 

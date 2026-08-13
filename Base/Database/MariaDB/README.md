@@ -103,10 +103,10 @@ ALTER DATABASE forgejo CHARACTER SET utf8mb4 COLLATE utf8mb4_bin;
 
 ## Boot order
 
-MariaDB is the base of the whole Homelab: both **NGINX Proxy Manager** (its backend DB) and **Forgejo** depend on it. On a cold start (reboot, power loss, DR) it must be the first service up:
+MariaDB is the base of the whole Homelab: both **NGINX Proxy Manager** (its backend DB) and **Forgejo** depend on it. **Redis** (`Database/Redis/`, its own stack) is the other piece of the database layer: Nextcloud and Borg-UI use it. On a cold start (reboot, power loss, DR) these two must be up before the rest:
 
 ```bash
-docker compose up -d   # Database/MariaDB/  (this one, first)
+docker compose up -d   # Database/MariaDB/ + Database/Redis/  (these two, first)
 docker compose up -d   # Network/ZeroTier/ + Network/NGINX-Proxy-Manager/
 docker compose up -d   # Git/Forgejo/ and the rest
 ```

@@ -4,11 +4,12 @@ Containerized ClamAV (`clamd` + `freshclam`) that scans files **streamed** to it
 
 ## Why a container when the host already runs ClamAV?
 
-This repo assumes three complementary layers, none of which duplicates another:
+This repo assumes four complementary layers, none of which duplicates another:
 
 1. **Host `clamd` + `clamonacc`** — protects the OS itself and scans the container data trees (the bind-mounted folders) on-access, in real time, as files are opened.
 2. **Container `clamd`** — a separate instance that scans files **streamed** to it over the network (Nextcloud's `files_antivirus`). It listens on TCP `3310` inside the Docker network namespace, with **no published ports**, so it never conflicts with the host daemon (which uses the systemd unix socket).
 3. **Scheduled scans** — cover files that are stored and never touched again; on-access only sees files that are actually opened. See "Scheduled scans" below.
+4. **Host full-system scan** — a weekly `clamscan` over the whole filesystem (OS + home + document/media trees). See "Full-system scan (host)" below.
 
 ## Configuration
 
@@ -44,6 +45,8 @@ The scheduled scans use no network at all: they run through `docker exec` agains
 
 Streaming (Nextcloud) and on-access (host) scanning only cover files that are **touched**. Files that land in a container's data folder and are never opened again (e.g. a file a webhook drops into `n8n/files`) need a periodic full scan.
 
+### Folder scans (per service)
+
 The intended way to add one is:
 
 1. Mount the service's data folder **read-only** into this container:
@@ -66,7 +69,28 @@ The intended way to add one is:
    - Manual run: `docker exec clamav clamdscan --infected /scan/n8n`.
    - Add more folders with one more mount + path argument (or another cron line).
 
-This repo ships the `n8n` example. It is a **root** cron because `docker exec` from the host requires it; the scan itself runs as the container's `clamd`.
+This repo ships the `n8n` example (Saturdays 03:00). It is a **root** cron because `docker exec` from the host requires it; the scan itself runs as the container's `clamd`.
+
+### Full-system scan (host)
+
+On top of the per-folder streams, the host runs a **weekly `clamscan` over the whole filesystem** as a root cron job, covering what the layers above do not batch-scan: the OS itself, the home folder and the document/media trees. Example line:
+
+```
+0 3 * * 2 root nice -n 15 ionice -c3 clamscan -r -i --exclude-dir=/proc --exclude-dir=/sys --exclude-dir=/dev --exclude-dir=/run --exclude-dir=/var/lib/docker --exclude-dir=/var/lib/clamav --exclude-dir=<backup-path> / >> /var/log/clamav-full-scan.log 2>&1
+```
+
+- Runs **standalone** (`clamscan`, not `clamd`), so it never touches the daemon's sockets, listeners or state.
+- Runs as **root** to read every tree; `nice`/`ionice` keep it from starving other jobs.
+- Exclusions: pseudo-filesystems (`/proc`, `/sys`, `/dev`, `/run`), the Docker overlay tree (`/var/lib/docker` — container data is already covered through the bind-mounted folders), the signature databases (`/var/lib/clamav`), and the **backup repo destination** (`<backup-path>`) — backup archives are compressed/deduplicated, so scanning them is wasted I/O with no added coverage.
+- **Stagger it away from the other heavy jobs** (the backup window, the filesystem scrub) so jobs do not compete for I/O. This repo's example runs **Tuesdays 03:00**; the per-folder scans run **Saturdays 03:00**.
+
+### Host on-access setup notes
+
+The host `clamonacc` watcher needs a few host-local (non-versioned) settings to cover the container data trees:
+
+- **ACL traverse permission** — `clamonacc` runs as the `clamav` user, so each ancestor of a container data folder must grant it execute, e.g. `setfacl -m u:clamav:x /home/<user>`. Docker's `:ro` mount only sets the ownership of the mount point itself; without the ACL the watcher reports `permission denied` on that tree.
+- **`OnAccessExcludeRootUID yes`** — add to `/etc/clamav/clamd.conf` and restart `clamonacc`, so root's own batch scans (the full-system scan above) do not re-trigger the watcher while reading `Containers/`.
+- **AppArmor** — the Debian `clamav-daemon` profile must be extended locally (override file under `/etc/apparmor.d/local/`, then reload the profile) to allow `clamonacc` to traverse and watch the container data path. This is a host change, not part of this stack.
 
 ## Nextcloud
 

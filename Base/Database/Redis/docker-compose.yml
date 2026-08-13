@@ -1,0 +1,21 @@
+services:
+  redis:
+    container_name: redis
+    image: redis:7-alpine
+    restart: always
+    # Persistent volume: Nextcloud (locks/cache) and Borg-UI (job scheduler)
+    # both live off this instance; without it, data is lost on every recreate.
+    volumes:
+      - ${PATH_TO_CONTAINERS}/Redis/data:/data
+    networks:
+      - db-net
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+
+networks:
+  db-net:
+    external: true
+    name: db-net
