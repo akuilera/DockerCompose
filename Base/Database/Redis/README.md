@@ -12,8 +12,20 @@ Standalone shared Redis (in-memory data store), deployed as its own stack.
 
 - **Nextcloud** (`Cloud/NextCloud/`) — file locking, transactional locking and the distributed cache. Reached as `redis` on `db-net`.
 - **Borg-UI** (`BackUp/Borg/`) — job scheduler/queue. Reached as `redis` on `db-net`.
+- **Forgejo** (`Git/Forgejo/`) — sessions, cache and queue. Reached as `redis` on `db-net`.
 
-Both consumers are unchanged by the migration: they keep resolving the service as `redis` on `db-net` (the `container_name` was kept).
+Both Nextcloud and Borg-UI are unchanged by the migration: they keep resolving the service as `redis` on `db-net` (the `container_name` was kept).
+
+### Database index convention
+
+All consumers share the same Redis instance and no password. To keep keys isolated, each service uses its own DB index:
+
+| DB | Consumer |
+|----|----------|
+| 0  | Nextcloud (locking/cache), Borg-UI (scheduler) — defaults |
+| 1  | Forgejo (sessions/cache/queue) |
+
+Configure the index in the connection string (`redis://redis:6379/<n>`).
 
 ## Configuration
 

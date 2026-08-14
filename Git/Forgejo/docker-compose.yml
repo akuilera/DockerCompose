@@ -17,6 +17,14 @@ services:
       - FORGEJO__server__ROOT_URL__FILE=/run/secrets/root_url
       # Public instance: disable open registration. New users only via an admin.
       - FORGEJO__service__DISABLE_REGISTRATION=true
+      # Shared Redis (Base/Database/Redis): sessions, cache, queue. DB 1 keeps
+      # Forgejo's keys isolated from Nextcloud/Borg-UI (which use DB 0).
+      - FORGEJO__session__PROVIDER=redis
+      - FORGEJO__session__PROVIDER_CONFIG=redis://redis:6379/1
+      - FORGEJO__cache__ADAPTER=redis
+      - FORGEJO__cache__HOST=redis://redis:6379/1
+      - FORGEJO__queue__TYPE=redis
+      - FORGEJO__queue__CONN_STR=redis://redis:6379/1
       # GITEA__ compatibility prefix (recommended by Forgejo):
       - GITEA__database__DB_TYPE=mysql
       - GITEA__database__HOST=mariadb
@@ -26,6 +34,12 @@ services:
       - GITEA__server__SSH_PORT=222
       - GITEA__server__ROOT_URL__FILE=/run/secrets/root_url
       - GITEA__service__DISABLE_REGISTRATION=true
+      - GITEA__session__PROVIDER=redis
+      - GITEA__session__PROVIDER_CONFIG=redis://redis:6379/1
+      - GITEA__cache__ADAPTER=redis
+      - GITEA__cache__HOST=redis://redis:6379/1
+      - GITEA__queue__TYPE=redis
+      - GITEA__queue__CONN_STR=redis://redis:6379/1
     restart: always
     networks:
       - db-net
