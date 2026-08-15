@@ -58,3 +58,16 @@ The same rule applies to any service you manage through Portainer while Portaine
 ## Forgejo behind NPM: custom location `/`
 
 Forgejo must be served with a **custom location `/`** in its Proxy Host. By default NPM adds a proxy location with a redirect to `/` (a 301 to the base path) which breaks Forgejo when the app already expects to serve the whole tree under that path. Configuring `location /` (forwarding everything, with websockets enabled) keeps the app's own routing intact and matches the `FORGEJO__server__ROOT_URL` set in the compose.
+
+## Forward target: service name vs IP
+
+The "Forward Hostname / IP" of a Proxy Host is resolved by nginx **at reload time, from inside the NPM container**, using Docker's embedded DNS (127.0.0.11), which only knows containers on the **same user-defined network(s)** as NPM.
+
+- **Service name** (e.g. `collabora`): resolves only if the target shares one of NPM's networks (`proxy-net`, `db-net`, `nextcloud-net`, `immich-net`, `apps-net`). Prefer it whenever possible — it survives container recreates, so redeploying the target never breaks the proxy.
+- **IP** (e.g. from `docker inspect`): needs no DNS and works from any network, but bridge IPs are **dynamic**; every recreate can change the address and silently break the proxy (502). Only for targets NPM cannot reach by name (other networks, host services, static IPs).
+
+How to decide from the repo: compare the target's `networks:` in its compose with NPM's list above. Intersection → use the service name. Otherwise join the target to a network NPM shares, or point the proxy at a published port on the host. Confirm from the server: `docker exec nginx_proxy_manager getent hosts <service>`.
+
+Example: the Collabora Proxy Host pointed at its old container IP; after switching to `collabora` it resolves to its `nextcloud-net` address and stays valid across recreates.
+
+> nginx caches upstream IPs until the next reload. If a name-based target is recreated and a proxy 502s, save/reload the Proxy Host in NPM.

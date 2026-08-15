@@ -18,6 +18,7 @@ services:
       - ${PATH_TO_CONTAINERS}/Nextcloud/apps:/var/www/html/apps
       - ${PATH_TO_CONTAINERS}/Nextcloud/config:/var/www/html/config
       - ${PATH_TO_CONTAINERS}/Nextcloud/custom_apps:/var/www/html/custom_apps
+      - ${PATH_TO_CONTAINERS}/Nextcloud/nextcloud_html:/var/www/html
     environment:
       - MYSQL_HOST=mariadb
       - MYSQL_DATABASE_FILE=/run/secrets/db_mysql_name
@@ -36,7 +37,10 @@ services:
       - db-net
       - nextcloud-net
 # Cron sidecar: runs /cron.sh (php cron.php every 5 min) so background jobs
-# (files_antivirus BackgroundScanner, trashbin expiry, activity, ...) actually run
+# (files_antivirus BackgroundScanner, trashbin expiry, activity, ...) actually run.
+# Shares the nextcloud_html volume: the image no longer bakes the app code into
+# /var/www/html, the entrypoint rsyncs it there at startup, and the sidecar
+# skips that entrypoint, so without the shared volume cron.php is missing.
   nextcloud-cron:
     container_name: nextcloud-cron
     image: nextcloud:latest
@@ -47,6 +51,7 @@ services:
       - ${PATH_TO_CONTAINERS}/Nextcloud/apps:/var/www/html/apps
       - ${PATH_TO_CONTAINERS}/Nextcloud/config:/var/www/html/config
       - ${PATH_TO_CONTAINERS}/Nextcloud/custom_apps:/var/www/html/custom_apps
+      - ${PATH_TO_CONTAINERS}/Nextcloud/nextcloud_html:/var/www/html
     environment:
       - MYSQL_HOST=mariadb
       - MYSQL_DATABASE_FILE=/run/secrets/db_mysql_name

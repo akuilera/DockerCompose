@@ -18,8 +18,9 @@ Quick reference for the NextCloud instance (private cloud: files, calendars, con
 | `${PATH_TO_CONTAINERS}/Nextcloud/config`       | `/var/www/html/config`     | `config.php` + app configs |
 | `${PATH_TO_CONTAINERS}/Nextcloud/custom_apps`  | `/var/www/html/custom_apps`| App Store apps (calendar, contacts, deck, tasks, richdocuments, ...) |
 | `${PATH_TO_CLOUD_DATA}/nextcloud_data`          | `/var/www/html/data`       | User files, databases of the instance |
+| `${PATH_TO_CONTAINERS}/Nextcloud/nextcloud_html` | `/var/www/html`       | Core code (rsynced from the image at startup) |
 
-`/var/www/html` (the rest of the code) is an **anonymous volume** that Docker refreshes from the image on every recreate — that is correct for the core, and exactly why `custom_apps` must be a bind mount (see [Incident: lost apps](#incident-lost-apps-after-an-update)).
+The core `/var/www/html` lives in a **bind mount shared with the `nextcloud-cron` sidecar**. The image no longer bakes the app code into `/var/www/html`; the entrypoint rsyncs it from `/usr/src/nextcloud` at every start (with the sub-mounts above shadowing the subdirectories). The sidecar skips that entrypoint (it only runs `crond`), so without the shared mount it would have no `cron.php` — see [Troubleshooting](#troubleshooting).
 
 ## Secrets
 
@@ -72,7 +73,7 @@ If `@'localhost'` exists, drop it (or rotate it too).
    docker exec -u www-data nextcloud php occ maintenance:mode --off
    ```
 
-The recreate refreshes the anonymous volume with the image code; every bind (data, apps, config, custom_apps) survives.
+The recreate re-runs the entrypoint rsync, which refreshes `/var/www/html` from the image code; every bind (data, apps, config, custom_apps, nextcloud_html) survives.
 
 ## Collabora (Office)
 
@@ -147,12 +148,13 @@ Admin console: `https://collabora.<suffix>.<domain>/browser/dist/admin/admin.htm
     docker exec -u www-data nextcloud php occ app:list --shipped=false
   ```
 
-**Lesson.** `custom_apps` (like anything not managed by the image) must be a **bind mount**, never an anonymous volume. The core `/var/www/html` may stay anonymous; persistent data must not. The fix is already applied in the compose file above.
+**Lesson.** `custom_apps` (like anything not managed by the image) must be a **bind mount**, never an anonymous volume. The core `/var/www/html` is also a bind mount (`nextcloud_html`) because the cron sidecar must see it too. The fix is already applied in the compose file above.
 
 ## Troubleshooting
 
 | Symptom | Cause / fix |
 | --- | --- |
+| Background jobs never run / "Last cron execution: unknown" | The cron sidecar had no `cron.php` (image no longer bakes the code into `/var/www/html`; the sidecar skips the entrypoint that rsyncs it). Fixed by sharing `${PATH_TO_CONTAINERS}/Nextcloud/nextcloud_html` as `/var/www/html` in both `nextcloud` and `nextcloud-cron`. Verify with `docker exec nextcloud-cron ls /var/www/html/cron.php` and `docker logs nextcloud-cron` after 5 min. |
 | "Página no encontrada" in an app store app | App code not mounted (`custom_apps` bind empty) or not registered; run `occ app:list --shipped=false`, then `occ upgrade --no-interaction`. |
 | DB connection errors after a password rotation | `config.php` still has the old password; update `dbpassword` (see [Secrets](#secrets)). |
 | Apps menu empty / stale UI | Force a refresh (anonymous volume) via a Portainer Update; a stale browser cache can also reproduce it — test in a private window first. |

@@ -9,11 +9,14 @@ docker exec -it mariadb mariadb -uroot
 ## Connection info
 
 - **Container**: `mariadb`
+- **Image**: `mariadb:12` (pinned to the current LTS major; avoids silent jumps to the next major on `latest`)
 - **Network**: `db-net` (bridge)
 - **Internal port**: `3306`
 - **Host**: `mariadb` (service name, reachable from other containers on `db-net`)
 - **Root (local)**: `root@localhost`, `unix_socket` plugin — no password inside the container.
 - **Root (TCP)**: `root@'%'`, `mysql_native_password` — password stored in the `MariaDB/mysql_root_password` secret.
+
+> **NextCloud "unsupported version" warning (accepted).** NextCloud's tested matrix covers MariaDB 10.6/10.11/11.4/11.8; the pinned `12.x` is not in it yet, so NextCloud shows a precautionary version warning. It is accepted deliberately: 12.x is the current LTS line, everything works, and a major downgrade is not supported in place (only dump+restore, touching Forgejo/NPM/NextCloud). Revisit if a real incompatibility shows up.
 
 ## Secrets
 

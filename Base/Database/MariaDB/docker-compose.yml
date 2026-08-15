@@ -1,7 +1,7 @@
 services:
   mariadb:
     container_name: mariadb
-    image: mariadb:latest
+    image: mariadb:12
     restart: always
     # command: --transaction-isolation=READ-COMMITTED --log-bin=binlog --binlog-format=ROW
     # The root password is read from a file (Docker secret); it never enters
