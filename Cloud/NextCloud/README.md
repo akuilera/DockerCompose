@@ -65,15 +65,46 @@ If `@'localhost'` exists, drop it (or rotate it too).
 
 ## Updating NextCloud
 
+NextCloud runs on `nextcloud:latest`; updates are manual (no auto-updater, see repo rules).
+
 1. Edit the compose here, commit and push.
 2. In Portainer, open the **NextCloud** stack → **Update** (pull + recreate).
-3. After a major version bump, run the upgrade from the CLI if the entrypoint did not:
+3. On recreate the entrypoint rsyncs the new code into `/var/www/html` and **auto-runs `occ upgrade` when the jump is within one major version** — usually nothing to do.
+4. If you instead see "Se necesita actualización" (the browser updater is disabled in `config.php`), run it from the CLI:
    ```bash
-   docker exec -u www-data nextcloud php occ upgrade --no-interaction
-   docker exec -u www-data nextcloud php occ maintenance:mode --off
+   sudo docker exec -u www-data nextcloud php occ upgrade --no-interaction
+   sudo docker exec -u www-data nextcloud php occ maintenance:mode --off   # only if it stays in maintenance mode
+   sudo docker exec -u www-data nextcloud php occ status                  # verify needsDbUpgrade: false
    ```
+5. **Only one major version per update.** If the container refuses to start with *"upgrading from X to Y is not supported ... only possible to upgrade one major version at a time"*, pin the compose image to the intermediate major (e.g. `nextcloud:33`), Portainer Update, run `occ upgrade`, then revert to `nextcloud:latest` and repeat.
+6. After a major upgrade, some migrations run as **background jobs**; the cron sidecar finishes them within ~5 min, then re-check the setup warnings.
+
+> **First start after creating the `nextcloud_html` bind.** If `/var/www/html` is empty, the entrypoint treats it as a *new install*: it rsyncs the code but does **not** run `occ upgrade`, so NextCloud shows the "Se necesita actualización" page until you run `occ upgrade` manually (step 4). This only happens the first time; once `version.php` exists, updates are automatic (within one major).
 
 The recreate re-runs the entrypoint rsync, which refreshes `/var/www/html` from the image code; every bind (data, apps, config, custom_apps, nextcloud_html) survives.
+
+## Accounts & registration
+
+**Nobody can self-register by default.** Account creation is admin-only (Administration → Users → "New user"); there is no public registration form. Combined with the no-inbound-ports setup, unknown users cannot reach or join this instance.
+
+If a future instance ever needs public sign-up, the **Registration** app (App Store) enables it: the admin turns it on, users sign up with email verification, land in a default group, and **accounts stay pending until the admin approves them**. Nothing to configure on this instance today.
+
+## Two-factor authentication
+
+Done from the GUI (no `occ` needed), in this safe order so you never lock yourself out:
+
+1. Apps → Security → install **Two-Factor TOTP Provider** (Backup Codes usually ships enabled by default).
+2. Personal settings → Security → set up TOTP (scan the QR, save the secret).
+3. Personal settings → Security → **generate backup codes** and store them (e.g. in the password manager).
+4. Only then: Administration → Security → enable **"Enforce two-factor authentication"**.
+
+If you ever get locked out of the web UI, recover from the server (no browser needed):
+
+```bash
+sudo docker exec -u www-data nextcloud php occ twofactorauth:disable <user> <provider>   # e.g. ... <user> totp
+```
+
+Other providers in the store: WebAuthn (hardware key), Two-Factor email, Two-Factor via Nextcloud notification.
 
 ## Collabora (Office)
 
