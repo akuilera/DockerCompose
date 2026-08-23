@@ -19,9 +19,18 @@ services:
       GF_DATABASE_PASSWORD__FILE: /run/secrets/grafana_db_password
 
     secrets:
-      - grafana_db_name
-      - grafana_db_user
-      - grafana_db_password
+      # - grafana_db_name
+      # - grafana_db_user
+      # - grafana_db_password
+      - source: grafana_db_name
+        target: grafana_db_name
+        mode: 0444
+      - source: grafana_db_user
+        target: grafana_db_user
+        mode: 0444
+      - source: grafana_db_password
+        target: grafana_db_password
+        mode: 0444
 
     networks:
       - db-net
