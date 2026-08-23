@@ -1,0 +1,38 @@
+services:
+  grafana:
+    image: grafana/grafana:latest
+    container_name: grafana
+    restart: always
+
+    ports:
+      - "3001:3000"
+
+    volumes:
+      - "${PATH_TO_CONTAINERS}/Grafana/data:/var/lib/grafana"
+
+    environment:
+      GF_DATABASE_TYPE: mysql
+      GF_DATABASE_HOST: mariadb:3306
+      GF_DATABASE_NAME__FILE: /run/secrets/grafana_db_name
+      GF_DATABASE_USER__FILE: /run/secrets/grafana_db_user
+      GF_DATABASE_PASSWORD__FILE: /run/secrets/grafana_db_password
+
+    secrets:
+      - grafana_db_name
+      - grafana_db_user
+      - grafana_db_password
+
+    networks:
+      - db-net
+
+networks:
+  db-net:
+    external: true
+
+secrets:
+  grafana_db_name:
+    file: ./secrets/Grafana/grafana_db_name
+  grafana_db_user:
+    file: ./secrets/Grafana/grafana_db_user
+  grafana_db_password:
+    file: ./secrets/Grafana/grafana_db_password
