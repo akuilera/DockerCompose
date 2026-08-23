@@ -31,8 +31,8 @@ networks:
 
 secrets:
   grafana_db_name:
-    file: ./secrets/Grafana/grafana_db_name
+    file: ${PATH_TO_SECRETS}Grafana/grafana_db_name
   grafana_db_user:
-    file: ./secrets/Grafana/grafana_db_user
+    file: ${PATH_TO_SECRETS}/Grafana/grafana_db_user
   grafana_db_password:
-    file: ./secrets/Grafana/grafana_db_password
+    file: ${PATH_TO_SECRETS}/Grafana/grafana_db_password
