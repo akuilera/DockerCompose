@@ -24,7 +24,10 @@ services:
     restart: unless-stopped
     networks:
       - files-net
+      - cloud-net
 
 networks:
   files-net:
+    external: true
+  cloud-net:
     external: true
