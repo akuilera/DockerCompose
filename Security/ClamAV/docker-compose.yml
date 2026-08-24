@@ -14,9 +14,13 @@ services:
       retries: 3
       start_period: 180s
     networks:
-      - nextcloud-net
+      # - nextcloud-net
+      - cloud-net
 
 networks:
-  nextcloud-net:
+  # nextcloud-net:
+  #   external: true
+  #   name: nextcloud-net
+  cloud-net:
     external: true
-    name: nextcloud-net
+    name: cloud-net

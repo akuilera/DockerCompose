@@ -35,7 +35,8 @@ services:
       - db_mysql_password
     networks:
       - db-net
-      - nextcloud-net
+      # - nextcloud-net
+      - cloud-net
 # Cron sidecar: runs /cron.sh (php cron.php every 5 min) so background jobs
 # (files_antivirus BackgroundScanner, trashbin expiry, activity, ...) actually run.
 # Shares the nextcloud_html volume: the image no longer bakes the app code into
@@ -65,7 +66,8 @@ services:
       - db_mysql_password
     networks:
       - db-net
-      - nextcloud-net
+      # - nextcloud-net
+      - cloud-net
 
 secrets:
   db_mysql_name:
@@ -78,5 +80,7 @@ secrets:
 networks:
   db-net:
     external: true
-  nextcloud-net:
+  # nextcloud-net:
+  #   external: true
+  cloud-net:
     external: true

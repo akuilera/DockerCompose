@@ -29,7 +29,8 @@ services:
     networks:
       - proxy-net
       - db-net
-      - nextcloud-net
+      # - nextcloud-net
+      - cloud-net
       - immich-net
       - apps-net
     secrets:
@@ -81,9 +82,13 @@ networks:
     external: true
     name: db-net
     # driver: bridge
-  nextcloud-net:
+  # nextcloud-net:
+  #   external: true
+  #   name: nextcloud-net
+  #   # driver: bridge
+  cloud-net:
     external: true
-    name: nextcloud-net
+    name: cloud-net
     # driver: bridge
   immich-net:
     external: true

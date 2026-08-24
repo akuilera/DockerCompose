@@ -16,8 +16,11 @@ services:
     ports:
       - "9980:9980"
     networks:
-      - nextcloud-net
+      # - nextcloud-net
+      - cloud-net
 
 networks:
-  nextcloud-net:
+  # nextcloud-net:
+  #   external: true
+  cloud-net:
     external: true
