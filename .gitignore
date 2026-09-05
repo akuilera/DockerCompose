@@ -2,6 +2,8 @@
 .env
 global.env
 *.log
+# Forgejo Runner node config contains the action-node secret (uuid+token).
+Git/Forgejo-Runner/runner-config.yml
 
 # Working tracking (kept local, never committed)
 TODO.md

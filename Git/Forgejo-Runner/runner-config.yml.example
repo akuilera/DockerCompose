@@ -1,0 +1,51 @@
+# Forgejo Runner configuration template.
+# Copy to $PATH_TO_SECRETS/Forgejo-Runner/runner-config.yml and fill with the
+# values Forgejo gives you. NEVER commit the real file: it contains the node
+# secret (uuid + token). Only this .example template belongs in git.
+
+log:
+  level: info
+
+runner:
+  # Number of jobs this runner executes at the same time.
+  capacity: 1
+  # Environment variables passed to every job.
+  envs: {}
+  # Extra environment variables for jobs, from a file (optional).
+  env_file: ""
+  # Timeout after which a job is cancelled.
+  timeout: 3h
+  # Labels decide which jobs this runner can run, and how.
+  # Format: "<label-name>:<label-type>://<default-image>".
+  # "docker" runs each job in an isolated container created from <image>.
+  # The image must contain git + node (many actions need them).
+  labels:
+    - docker:docker://ghcr.io/catthehacker/ubuntu:act-22.04
+
+container:
+  # Run each job in an isolated container inside the Docker-in-Docker daemon
+  # that ships with this stack (secure: never exposes the host docker socket).
+  docker_host: tcp://docker-in-docker:2375
+  # Let each job have its own temporary network (Forgejo creates these).
+  network: ""
+  # Required so jobs can run nested docker (docker build) inside dind.
+  privileged: true
+  workdir_parent: ""
+
+cache:
+  enabled: true
+  dir: ""
+
+host:
+  # Parent directory of a job's working directory.
+  workdir_parent: ""
+
+server:
+  # The Forgejo instance that this runner connects to, plus the node identity.
+  # Forgejo -> Actions -> Nodes -> "Create new node" then copy the values it
+  # gives you here. These are SECRETS. Replace <instance-url> below.
+  connections:
+    forgejo:
+      url: <instance-url>
+      uuid: CHANGE_ME_uuid_from_forgejo
+      token: CHANGE_ME_token_from_forgejo

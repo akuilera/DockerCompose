@@ -1,0 +1,46 @@
+services:
+  # Docker-in-Docker daemon: isolates the Actions job containers from the
+  # host Docker daemon (the runner never touches /var/run/docker.sock).
+  # This matches the Forgejo-runner recommendation for secure access to
+  # Docker from within workflows (dind), see
+  # https://forgejo.org/docs/latest/admin/actions/docker-access/
+  docker-in-docker:
+    image: docker:dind
+    container_name: forgejo-runner-dind
+    hostname: docker-in-docker
+    privileged: true
+    command: ["dockerd", "-H", "tcp://0.0.0.0:2375", "--tls=false"]
+    restart: unless-stopped
+    networks:
+      - apps-net
+
+  # Forgejo Actions runner (the "node" shown in Forgejo -> Actions -> Nodes).
+  # It connects back to the Forgejo instance and executes jobs from the
+  # repository workflows (.forgejo/workflows/*.yml).
+  runner:
+    image: data.forgejo.org/forgejo/runner:13
+    container_name: forgejo-runner
+    hostname: forgejo-runner
+    depends_on:
+      docker-in-docker:
+        condition: service_started
+    environment:
+      DOCKER_HOST: tcp://docker-in-docker:2375
+    # Runs without root privileges; owns the persistent data volume below.
+    user: 1001:1001
+    volumes:
+      # Persistent runner identity + cache. Lives under PATH_TO_CONTAINERS
+      # (NOT in the git repo).
+      - ${PATH_TO_CONTAINERS}/Forgejo-Runner/runner:/data
+      # The runner config with the node secret (url/uuid/token) is a secret
+      # file, mounted read-only from PATH_TO_SECRETS. NEVER commit it.
+      - ${PATH_TO_SECRETS}/Forgejo-Runner/runner-config.yml:/runner-config.yml:ro
+    restart: unless-stopped
+    command: ["forgejo-runner", "daemon", "--config", "/runner-config.yml"]
+    networks:
+      - apps-net
+
+networks:
+  apps-net:
+    external: true
+    name: apps-net
