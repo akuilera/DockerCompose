@@ -1,0 +1,21 @@
+# Monitored hosts (file_sd discovery).
+#
+# SECURITY: this is the server's local working file with real hostnames/IPs.
+# The copy in the repo only contains placeholders - never commit real values.
+#
+# The server's own node-exporter (Docker service name, resolved via Docker DNS
+# on the shared network):
+- targets:
+    - node-exporter:9100
+  labels:
+    host: server
+
+# Remote machines (laptop, tablet, other devices). Replace the placeholder with
+# the reachable address - a local DNS name or a private VPN hostname, e.g.:
+#   - targets: ["my-laptop:9100"]
+#
+# Add one block per device, keeping the 'host' label short and unique:
+- targets:
+    - "<hostname>:9100"
+  labels:
+    host: client-1

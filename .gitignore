@@ -3,7 +3,10 @@
 global.env
 *.log
 # Forgejo Runner node config contains the action-node secret (uuid+token).
-Git/Forgejo-Runner/runner-config.yml
+**/Forgejo-Runner/runner-config.yml
+
+# Prometheus: host targets with real hostnames live only on the server.
+**/Prometheus/prometheus/targets/nodes.yml
 
 # Working tracking (kept local, never committed)
 TODO.md

@@ -1,0 +1,62 @@
+# Monitoring stack: Prometheus + Alertmanager + Node Exporter (local).
+# Scrapes remote machines via file_sd targets (see prometheus/targets/nodes.yml).
+# All services are internal-only (no published ports); Grafana reaches Prometheus
+# over the shared external network 'monitoring-net'.
+
+services:
+  prometheus:
+    image: prom/prometheus:v3.4.2
+    container_name: prometheus
+    restart: always
+    user: "65534:65534"
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=90d
+      - --storage.tsdb.retention.size=10GB
+      - --web.enable-lifecycle
+    volumes:
+      - ./prometheus:/etc/prometheus:ro
+      - ${PATH_TO_CONTAINERS}/Monitoring/Prometheus/data:/prometheus
+    # Optional local-only UI access (comment on the server to enable):
+    # ports:
+    #   - "127.0.0.1:9090:9090"
+    networks:
+      - monitoring-net
+
+  alertmanager:
+    image: prom/alertmanager:v0.28.1
+    container_name: alertmanager
+    restart: always
+    user: "65534:65534"
+    command:
+      - --config.file=/etc/alertmanager/alertmanager.yml
+      - --storage.path=/data
+    volumes:
+      - ./alertmanager:/etc/alertmanager:ro
+      - ${PATH_TO_CONTAINERS}/Monitoring/Prometheus/alertmanager-data:/data
+    # Optional local-only UI access (comment on the server to enable):
+    # ports:
+    #   - "127.0.0.1:9093:9093"
+    networks:
+      - monitoring-net
+
+  node-exporter:
+    image: prom/node-exporter:v1.9.0
+    container_name: node-exporter
+    restart: always
+    user: "0:0"
+    command:
+      - --path.rootfs=/host
+      - --path.procfs=/host/proc
+      - --path.sysfs=/host/sys
+      - --collector.systemd
+      - --collector.processes
+    volumes:
+      - /:/host:ro,rslave
+    networks:
+      - monitoring-net
+
+networks:
+  monitoring-net:
+    external: true

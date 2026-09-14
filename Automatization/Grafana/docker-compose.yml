@@ -12,6 +12,7 @@ services:
 
     volumes:
       - "${PATH_TO_CONTAINERS}/Grafana/data:/var/lib/grafana"
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
 
     environment:
       GF_DATABASE_TYPE: mysql
@@ -36,14 +37,17 @@ services:
 
     networks:
       - db-net
+      - monitoring-net
 
 networks:
   db-net:
     external: true
+  monitoring-net:
+    external: true
 
 secrets:
   grafana_db_name:
-    file: ${PATH_TO_SECRETS}Grafana/grafana_db_name
+    file: ${PATH_TO_SECRETS}/Grafana/grafana_db_name
   grafana_db_user:
     file: ${PATH_TO_SECRETS}/Grafana/grafana_db_user
   grafana_db_password:

@@ -1,0 +1,42 @@
+groups:
+  - name: infrastructure
+    rules:
+      - alert: HostDown
+        expr: up{job="node"} == 0
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "{{ $labels.host }} is not reachable"
+
+      - alert: HighCpuUsage
+        expr: 100 - (avg by (instance) (rate(node_cpu_seconds_total{job="node", mode="idle"}[5m])) * 100) > 90
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High CPU on {{ $labels.host }} ({{ $labels.instance }})"
+
+      - alert: HighMemoryUsage
+        expr: 100 * (1 - node_memory_MemAvailable_bytes{job="node"} / node_memory_MemTotal_bytes{job="node"}) > 90
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High memory on {{ $labels.host }} ({{ $labels.instance }})"
+
+      - alert: FilesystemAlmostFull
+        expr: (1 - node_filesystem_avail_bytes{job="node", fstype!~"tmpfs|overlay|cgroup.*|proc|sysfs|devpts|fuse.*|squashfs|autofs"} / node_filesystem_size_bytes{job="node", fstype!~"tmpfs|overlay|cgroup.*|proc|sysfs|devpts|fuse.*|squashfs|autofs"}) * 100 >= 95
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Filesystem almost full on {{ $labels.mountpoint }} ({{ $labels.host }})"
+
+      - alert: DiskFillPredicted
+        expr: predict_linear(node_filesystem_avail_bytes{job="node", fstype!~"tmpfs|overlay|cgroup.*|proc|sysfs|devpts|fuse.*|squashfs|autofs"}[6h], 24*3600) < 0
+        for: 30m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Disk {{ $labels.mountpoint }} on {{ $labels.host }} will fill within 24h"
