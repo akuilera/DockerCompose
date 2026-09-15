@@ -14,5 +14,5 @@ scrape_configs:
   - job_name: node
     file_sd_configs:
       - files:
-          - /etc/prometheus/nodes.yml
+          - /etc/prometheus/targets/nodes.yml
         refresh_interval: 30s
