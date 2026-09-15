@@ -2,55 +2,58 @@
 
 Stack de monitoreo de la infraestructura: Prometheus scrapea métricas de Node Exporter (servidor y dispositivos remotos), guarda ~90 días de historial (máx 10 GB) y Alertmanager queda listo para notificaciones (receiver vacío por ahora). Grafana consume Prometheus por la red compartida `monitoring-net`.
 
-## Layout (GitOps — la config vive en el repo)
+## Layout — TODO bajo `${PATH_TO_CONTAINERS}`
 
-- **Config estática → este repo**, montada **relativa** al clon de Portainer (`./prometheus`, `./alertmanager`). Por eso el stack se despliega SIEMPRE como **Portainer → Stack from Git**; Upload/Text no vale (las rutas relativas dependen del clon).
-- **Personal/estado → servidor**, bajo `${PATH_TO_CONTAINERS}`:
+Toda la config, plantillas y datos viven en el servidor bajo `${PATH_TO_CONTAINERS}`; el repo no monta nada en runtime (solo aporta el compose y las plantillas de referencia):
 
-| Ruta en el servidor | Montaje en el contenedor | Contenido |
-|---|---|---|
-| `${PATH_TO_CONTAINERS}/Monitoring/Prometheus/nodes.yml` | semilla → `prometheus/targets/nodes.yml` (dentro del bind de config) | Único archivo personal: hosts reales (file_sd) |
-| `${PATH_TO_CONTAINERS}/Monitoring/Prometheus/data` | `/prometheus` | TSDB de Prometheus |
-| `${PATH_TO_CONTAINERS}/Monitoring/Prometheus/alertmanager-data` | `/data` | Datos de Alertmanager |
+${PATH_TO_CONTAINERS}/Monitoring/Prometheus/
 
-**Los binds solo usan destinos que ya existen en la imagen del contenedor.** En este host Docker no puede crear destinos nuevos en el rootfs (`mkdirat`/`mknod` → `read-only file system`), ni como directorio ni como archivo. Por eso `nodes.yml` no se monta con su propio bind: se **siembra** dentro del SOURCE del bind de config que ya funciona (`./prometheus → /etc/prometheus`). El archivo durable vive fuera del clon y del repo.
-
-Update flow: `git push` → Portainer → **Update stack** → `bash prometheus/sync-config.sh` → `sudo docker kill -s HUP prometheus` (el re-clon del Update borra los archivos no versionados, por eso el seed va después).
-
-## Bootstrap (en el servidor, una vez)
-
-```bash
-# 1. Red external compartida con Grafana
-docker network create --driver bridge monitoring-net
-
-# 2. Directorios con el UID de los contenedores (65534 = nobody)
-sudo mkdir -p "${PATH_TO_CONTAINERS}/Monitoring/Prometheus"/{data,alertmanager-data,targets}
-sudo chown -R 65534:65534 "${PATH_TO_CONTAINERS}/Monitoring/Prometheus"
-
-# 3. Archivo durable de targets (personal, fuera del repo): copia del example y rellena la IP
-cp <clon>/Automatization/Monitoring/Prometheus/prometheus/targets/nodes.yml.example \
-   "${PATH_TO_CONTAINERS}/Monitoring/Prometheus/nodes.yml"
-nano "${PATH_TO_CONTAINERS}/Monitoring/Prometheus/nodes.yml"
-
-# 4. Siembra el archivo en el clon (destino del bind de config) y comprueba
-bash <clon>/Automatization/Monitoring/Prometheus/prometheus/sync-config.sh
+```text
+Monitoring/Prometheus/
+├── prometheus/
+│   ├── tmpl/      → /tmpl (plantillas; solo se regeneran si faltan)
+│   ├── config/    → /etc/prometheus:ro (config real que lee Prometheus)
+│   └── data/      → /prometheus (TSDB, propietario 65534)
+└── alertmanager/
+    ├── tmpl/      → /tmpl-alertmanager (plantilla)
+    ├── config/    → /etc/alertmanager:ro (config real)
+    └── data/      → /data (propietario 65534)
 ```
 
-5. **Portainer → Stacks → + Add stack** → *Git Repository* → carpeta `Automatization/Monitoring/Prometheus` → variable `PATH_TO_CONTAINERS` (usa el valor real del `.env` del servidor) → Deploy. Después cada Update, re-ejecuta el paso 4 (re-clon vuelve a limpiar el seed).
+- Un servicio `bootstrap` (busybox) crea los directorios en el primer arranque, siembra la config por defecto solo si falta (`cp -n`, nunca pisa ediciones), regenera `nodes.yml` desde la env `NODE_TARGETS` y hace `chown -R 65534:65534` de los `data/` → **no hay pasos manuales** (ni mkdir, ni chown, ni scripts).
+- Los contenedores de Prometheus/Alertmanager corren como `nobody` (UID 65534).
+- Un solo bind completo por servicio, siempre sobre destinos que ya existen en la imagen (`/etc/prometheus`, `/etc/alertmanager`): evita el EROFS de montajes anidados.
 
-## Recarga de targets sin reinicio (hot reload)
+## Despliegue (Portainer → Stack from Git)
+
+1. Carpeta: `Automatization/Monitoring/Prometheus`.
+2. Variables de entorno del stack:
+   - `PATH_TO_CONTAINERS` — raíz de datos (la que uses en otros stacks, p. ej. `${PATH_TO_CONTAINERS}` de tu `global.env`).
+   - `PATH_TO_SECRETS` — si procede.
+   - `NODE_TARGETS` — hosts a scrapear (lista separada por comas). Default: `node-exporter:9100`.
+3. **Deploy**. Update tras cada `git push`; añadir/quitar dispositivos = editar `NODE_TARGETS` → Update.
+
+El `bootstrap` termina en *Exited (0)*; quedan corriendo `prometheus`, `alertmanager` y `node-exporter` (red externa `monitoring-net`, sin puertos publicados).
+
+## Añadir un dispositivo
+
+1. Instala `node_exporter` nativo en él (ver `Recursos/<dispositivo>/Desktop/Monitoring/install-node-exporter.sh`).
+2. Añade su dirección (`host-zerotier:9100` mejor que IP) a `NODE_TARGETS` del stack en Portainer → Update.
+
+## Editar la config (sin redeploy)
+
+Se edita directamente en `.../{prometheus,alertmanager}/config/` del servidor y se recarga el proceso:
 
 ```bash
 docker kill -s HUP prometheus
+docker kill -s HUP alertmanager
 ```
+
+`sync-config.sh` ya no existe: el bootstrap hace el seed automáticamente en cada Update.
 
 Más detalle y troubleshooting en el doc de trabajo local (`Automatization/Grafana/TODO.md`).
 
-## Node Exporter en dispositivos remotos
-
-Las máquinas monitoreadas corren `node_exporter` **nativo** (no en contenedor): binario + unit systemd + firewall. Ejemplo de instalación para dispositivos Fedora en `Recursos/<dispositivo>/Desktop/Monitoring/install-node-exporter.sh`. Cada dispositivo nuevo = 1 bloque en `nodes.yml` + instalar el exporter allí.
-
 ## Seguridad
 
-- Repo público: **nunca** hostnames/IPs reales aquí; `nodes.yml` real solo en el servidor (patrón gitignore `**/Prometheus/prometheus/targets/nodes.yml`).
+- Repo público: **nunca** hostnames/IPs reales aquí; los targets viven solo en `NODE_TARGETS` (Portainer/`.env` local gitignored). `prometheus/targets/nodes.yml.example` es solo referencia.
 - Prometheus y Alertmanager **sin puertos publicados** (solo red interna `monitoring-net`); el acceso local de diagnóstico se hace por API dentro del clúster (`docker exec ... localhost:9090`).
