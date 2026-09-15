@@ -9,6 +9,8 @@ El stack **no lee nada del clon en runtime** (igual que Monitoring). Un servicio
 - **Datasource Prometheus** — `datasources/prometheus.yml`: uid `prometheus`, url `http://prometheus:9090` (resuelto por `monitoring-net`).
 - **Dashboards** — carpeta `Infrastructure/` vía `dashboards/dashboards.yml` (proveedor `file`, `updateIntervalSeconds: 30`). Dashboards genéricos por rol (`server`, `client-1`), se alternan con la variable *Host*.
 
+> **El label `host` lo pone Monitoring, no Grafana.** La variable *Host* filtra `host="$host"`, y ese label llega en las métricas scrapeadas desde el bootstrap de Monitoring (`NODE_TARGETS` en formato `nombre=host:port` → cada target con su label `host`). Añadir/quitar dispositivo en Grafana = **solo** tocar `NODE_TARGETS` en el stack Monitoring y Update (Grafana no reconfigura nada). Si un dispositivo está **UP en Prometheus pero el dashboard no muestra data** (no el server), es que su target llegó sin label `host` (faltó el prefijo `nombre=`).
+
 El contenido (heredocs del `bootstrap`) es la **única fuente de verdad** en el repo; ya no hay carpeta `grafana/provisioning/`. Para personalizar un dashboard tras el primer despliegue, edita el archivo ya sembrado en el server (`${PATH_TO_CONTAINERS}/Grafana/provisioning/dashboards/*.json`) — el bootstrap nunca sobrescribe archivos existentes.
 
 > **Por qué absoluto**: en Portainer CE, los binds **relativos al clon git (`./...`) resuelven a un dir vacío** (el repo no se materializa en el host). Por eso el provisioning vive bajo `${PATH_TO_CONTAINERS}` y lo siembra el bootstrap, igual que la config de Monitoring.

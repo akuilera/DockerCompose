@@ -30,7 +30,7 @@ Monitoring/Prometheus/
 2. Variables de entorno del stack:
    - `PATH_TO_CONTAINERS` — raíz de datos (la que uses en otros stacks, p. ej. `${PATH_TO_CONTAINERS}` de tu `global.env`).
    - `PATH_TO_SECRETS` — si procede.
-   - `NODE_TARGETS` — hosts a scrapear (lista separada por comas). Default: `node-exporter:9100`.
+   - `NODE_TARGETS` — hosts a scrapear, pares `nombre=host:port` separados por comas. El `nombre=` hace que el bootstrap ponga el label `host: <nombre>` a ese target → es lo que los dashboards usan para filtrar (`$host`). Default: `server=node-exporter:9100`.
 3. **Deploy**. Update tras cada `git push`; añadir/quitar dispositivos = editar `NODE_TARGETS` → Update.
 
 El `bootstrap` termina en *Exited (0)*; quedan corriendo `prometheus`, `alertmanager` y `node-exporter` (red externa `monitoring-net`, sin puertos publicados).
@@ -38,7 +38,7 @@ El `bootstrap` termina en *Exited (0)*; quedan corriendo `prometheus`, `alertman
 ## Añadir un dispositivo
 
 1. Instala `node_exporter` nativo en él (ver `Recursos/<dispositivo>/Desktop/Monitoring/install-node-exporter.sh`).
-2. Añade su dirección (`host-zerotier:9100` mejor que IP) a `NODE_TARGETS` del stack en Portainer → Update.
+2. Añade su dirección **con prefijo `nombre=`** (`server=node-exporter:9100`, `client-1=host-zerotier:9100`) a `NODE_TARGETS` del stack en Portainer → Update. Sin el `nombre=`, el target scrapea UP pero sin label `host` → los dashboards muestran **No data**.
 
 ## Editar la config (sin redeploy)
 
