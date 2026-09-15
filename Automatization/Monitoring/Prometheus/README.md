@@ -9,9 +9,11 @@ Stack de monitoreo de la infraestructura: Prometheus scrapea métricas de Node E
 
 | Ruta en el servidor | Montaje en el contenedor | Contenido |
 |---|---|---|
-| `${PATH_TO_CONTAINERS}/Monitoring/Prometheus/targets` | `/etc/prometheus/targets:ro` | Único archivo personal: `nodes.yml` (hosts reales) |
+| `${PATH_TO_CONTAINERS}/Monitoring/Prometheus/targets/nodes.yml` | `/etc/prometheus/nodes.yml:ro` | Único archivo personal: hosts reales (file_sd) |
 | `${PATH_TO_CONTAINERS}/Monitoring/Prometheus/data` | `/prometheus` | TSDB de Prometheus |
 | `${PATH_TO_CONTAINERS}/Monitoring/Prometheus/alertmanager-data` | `/data` | Datos de Alertmanager |
+
+El targets se monta como **archivo** (`nodes.yml`) y no como directorio: montar un directorio bajo `/etc/prometheus` (que ya es destino de otro bind) obliga a Docker a crear la subcarpeta en el rootfs y en este host falla con `mkdirat … read-only file system`.
 
 Update flow: `git push` → Portainer → **Update stack** (la config nueva llega sola; el TSDB y `nodes.yml` no se tocan).
 
