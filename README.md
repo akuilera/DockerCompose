@@ -26,7 +26,7 @@ This repository holds the full Docker Compose configuration of a Homelab (Debian
 ├── global.env.example             <- shared variables template
 ├── .gitignore                     <- excludes global.env, .env, data
 ├── README.md
-├── Automatization/                <- n8n
+├── Automatization/                <- n8n, Grafana, Monitoring (Prometheus/Alertmanager)
 ├── BackUp/                        <- Borg
 ├── Base/
 │   ├── Database/                  <- MariaDB, Redis + sync-db.sh (DB user rotation)
@@ -84,6 +84,7 @@ On a cold start (reboot, power loss, DR) bring the database layer up first, beca
   - **fmd-net**: FindMyDevice
   - **media-download-net**: Jackett + Transmission + Emby
   - **heimdall-net**: Heimdall
+  - **monitoring-net**: Prometheus + Alertmanager + node-exporter + Grafana — the monitoring segment (internal scrape, no published ports)
 - **Default bridge**: Jellyfin (no custom network; it publishes its own ports instead).
 
 ##### Why this layout
@@ -107,7 +108,7 @@ Every compose file uses `external: true`, so **the networks must already exist b
 
   ```bash
   for net in proxy-net db-net nextcloud-net immich-net apps-net files-net \
-             fmd-net media-download-net heimdall-net; do
+             fmd-net media-download-net heimdall-net monitoring-net; do
     docker network create --driver bridge "$net"
   done
   ```

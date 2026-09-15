@@ -1,5 +1,7 @@
 # Monitoring stack: Prometheus + Alertmanager + Node Exporter (local).
-# Scrapes remote machines via file_sd targets (see prometheus/targets/nodes.yml).
+# Static config comes from this repo (mount relative to the Portainer Git clone);
+# only per-host targets and runtime data live under ${PATH_TO_CONTAINERS}.
+# Deploy/update via Portainer "Stack from Git" — never Upload/Text (relative mounts).
 # All services are internal-only (no published ports); Grafana reaches Prometheus
 # over the shared external network 'monitoring-net'.
 
@@ -17,6 +19,7 @@ services:
       - --web.enable-lifecycle
     volumes:
       - ./prometheus:/etc/prometheus:ro
+      - ${PATH_TO_CONTAINERS}/Monitoring/Prometheus/targets:/etc/prometheus/targets:ro
       - ${PATH_TO_CONTAINERS}/Monitoring/Prometheus/data:/prometheus
     # Optional local-only UI access (comment on the server to enable):
     # ports:
