@@ -8,39 +8,70 @@
 
 services:
   bootstrap:
-    image: busybox
+    image: busybox:1.36
     restart: "no"
     command: |
       /bin/sh -c '
       set -eu
-      mkdir -p "$TMPL"/rules "$TMPL"/targets "$C_PROM"/rules "$C_PROM"/targets
-      mkdir -p "$TMPL_ALERT" "$C_ALERT"
+
+      echo "[bootstrap] 1/4 dirs"
+      mkdir -p "$TMPL/rules" "$TMPL/targets" \
+               "$C_PROM/rules" "$C_PROM/targets" \
+               "$TMPL_ALERT" "$C_ALERT"
+
+      echo "[bootstrap] 2/4 templates"
       if [ ! -s "$TMPL/prometheus.yml" ]; then
-        printf "%s\n" "global:" "  scrape_interval: 15s" \
-          "  evaluation_interval: 30s" "  scrape_timeout: 10s" \
-          "rule_files:" "  - /etc/prometheus/rules/alerts.yml" \
-          "scrape_configs:" "  - job_name: prometheus" \
-          "    static_configs:" "      - targets: [\"localhost:9090\"]" \
-          "  - job_name: node" "    file_sd_configs:" \
+        printf "%s\n" \
+          "global:" \
+          "  scrape_interval: 15s" \
+          "  evaluation_interval: 30s" \
+          "  scrape_timeout: 10s" \
+          "rule_files:" \
+          "  - /etc/prometheus/rules/alerts.yml" \
+          "scrape_configs:" \
+          "  - job_name: prometheus" \
+          "    static_configs:" \
+          "      - targets: [\"localhost:9090\"]" \
+          "  - job_name: node" \
+          "    file_sd_configs:" \
           "      - files: [\"/etc/prometheus/targets/nodes.yml\"]" \
-          "        refresh_interval: 30s" > "$TMPL/prometheus.yml"
+          "        refresh_interval: 30s" \
+          > "$TMPL/prometheus.yml"
       fi
       if [ ! -s "$TMPL/rules/alerts.yml" ]; then
         printf "%s\n" "groups: []" > "$TMPL/rules/alerts.yml"
       fi
       if [ ! -s "$TMPL_ALERT/alertmanager.yml" ]; then
-        printf "%s\n" "global:" "  resolve_timeout: 5m" \
-          "route:" "  group_by: [alertname]" "  group_wait: 30s" \
-          "  group_interval: 5m" "  repeat_interval: 4h" \
-          "  receiver: default" "receivers:" "  - name: default" \
+        printf "%s\n" \
+          "global:" \
+          "  resolve_timeout: 5m" \
+          "route:" \
+          "  group_by: [alertname]" \
+          "  group_wait: 30s" \
+          "  group_interval: 5m" \
+          "  repeat_interval: 4h" \
+          "  receiver: default" \
+          "receivers:" \
+          "  - name: default" \
           > "$TMPL_ALERT/alertmanager.yml"
       fi
-      cp -n "$TMPL/prometheus.yml"         "$C_PROM/prometheus.yml"
-      cp -n "$TMPL/rules/alerts.yml"       "$C_PROM/rules/alerts.yml"
-      cp -n "$TMPL_ALERT/alertmanager.yml" "$C_ALERT/alertmanager.yml"
-      printf -- "- targets:\n" > "$C_PROM/targets/nodes.yml"
-      printf "%s\n" "$NODE_TARGETS" | tr "," "\n" | sed "s/^/  - /" >> "$C_PROM/targets/nodes.yml"
-      chown -R 65534:65534 "$DATA" "$ALERTDATA"'
+
+      echo "[bootstrap] 3/4 config"
+      for f in prometheus.yml rules/alerts.yml; do
+        [ -e "$C_PROM/$f" ] || cp "$TMPL/$f" "$C_PROM/$f"
+      done
+      [ -e "$C_ALERT/alertmanager.yml" ] || cp "$TMPL_ALERT/alertmanager.yml" "$C_ALERT/alertmanager.yml"
+
+      echo "[bootstrap] 4/4 nodes.yml"
+      printf "%s\n" "- targets:" > "$C_PROM/targets/nodes.yml"
+      printf "%s\n" "$NODE_TARGETS" | tr "," "\n" | while IFS= read -r t; do
+        if [ -n "$t" ]; then
+          printf "%s\n" "  - $t" >> "$C_PROM/targets/nodes.yml"
+        fi
+      done
+
+      chown -R 65534:65534 "$DATA" "$ALERTDATA"
+      echo "[bootstrap] done"'
     volumes:
       - ${PATH_TO_CONTAINERS}/Monitoring/Prometheus/prometheus/tmpl:/tmpl
       - ${PATH_TO_CONTAINERS}/Monitoring/Prometheus/prometheus/config:/config-prometheus
