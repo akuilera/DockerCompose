@@ -1,0 +1,62 @@
+services:
+  ferdium-server:
+    image: ferdium/ferdium-server:latest
+    container_name: ferdium-server
+    restart: unless-stopped
+    # App reads its config from env vars only (AdonisJS). It has no *_FILE
+    # support, so the personal/sensitive values are exported here from Docker
+    # secrets (same pattern used by GoAccess in Security/GoAccess) before
+    # delegating to the image's real entrypoint (/entrypoint.sh).
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        export APP_URL="$(cat /run/secrets/app_url)"
+        export DB_DATABASE="$(cat /run/secrets/db_mysql_name)"
+        export DB_USER="$(cat /run/secrets/db_mysql_user)"
+        export DB_PASSWORD="$(cat /run/secrets/db_mysql_password)"
+        exec /entrypoint.sh
+    environment:
+      - NODE_ENV=production
+      - DB_CONNECTION=mysql
+      - DB_HOST=mariadb
+      - DB_PORT=3306
+      - DB_SSL=false
+      - DATA_DIR=/data
+      - IS_CREATION_ENABLED=true
+      - IS_DASHBOARD_ENABLED=true
+      # Publicly reachable: no open registration. Flip to true only while
+      # creating an account, then back to false (see README).
+      - IS_REGISTRATION_ENABLED=false
+      - CONNECT_WITH_FRANZ=false
+      # Generates and persists the JWT PEM keys under DATA_DIR on first run.
+      - JWT_USE_PEM=true
+    volumes:
+      - ${PATH_TO_CONTAINERS}/Ferdium/data:/data
+      - ${PATH_TO_CONTAINERS}/Ferdium/recipes:/app/build/recipes
+    secrets:
+      - app_url
+      - db_mysql_name
+      - db_mysql_user
+      - db_mysql_password
+    networks:
+      - db-net
+      - proxy-net
+
+secrets:
+  app_url:
+    file: "${PATH_TO_SECRETS}/Ferdium/app_url"
+  db_mysql_name:
+    file: "${PATH_TO_SECRETS}/Ferdium/db_mysql_name"
+  db_mysql_user:
+    file: "${PATH_TO_SECRETS}/Ferdium/db_mysql_user"
+  db_mysql_password:
+    file: "${PATH_TO_SECRETS}/Ferdium/db_mysql_password"
+
+networks:
+  db-net:
+    external: true
+    name: db-net
+  proxy-net:
+    external: true
+    name: proxy-net

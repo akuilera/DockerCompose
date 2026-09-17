@@ -63,95 +63,25 @@ services:
       [ -e "$$C_ALERT/alertmanager.yml" ] || cp "$$TMPL_ALERT/alertmanager.yml" "$$C_ALERT/alertmanager.yml"
 
       echo "[bootstrap] 4/4 nodes.yml"
-      printf "%s\n" "- targets:" > "$$C_PROM/targets/nodes.yml"
-      printf "%s\n" "$$NODE_TARGETS" | tr "," "\n" | while IFS= read -r t; do
-        [ -n "$$t" ] || continue
-        case "$$t" in
+      : > "$$$$C_PROM/targets/nodes.yml"
+      printf "%s\n" "$$$$NODE_TARGETS" | tr "," "\n" | while IFS= read -r t; do
+        [ -n "$$$$t" ] || continue
+        case "$$$$t" in
           *=*)
-            name="$${t%%=*}"; addr="$${t##*=}"
+            name="$$$${t%%=*}"; addr="$$$${t##*=}"
             printf "%s\n" \
-              "    - $$addr" \
+              "- targets:" \
+              "    - $$$$addr" \
               "  labels:" \
-              "    host: $$name" \
-              >> "$$C_PROM/targets/nodes.yml"
+              "    host: $$$$name" \
+              >> "$$$$C_PROM/targets/nodes.yml"
             ;;
           *)
-            printf "%s\n" "    - $$t" >> "$$C_PROM/targets/nodes.yml"
+            printf "%s\n" \
+              "- targets:" \
+              "    - $$$$t" \
+              >> "$$$$C_PROM/targets/nodes.yml"
             ;;
         esac
       done
-
-      chown -R 65534:65534 "$$DATA" "$$ALERTDATA"
-      echo "[bootstrap] done"'
-    volumes:
-      - ${PATH_TO_CONTAINERS}/Monitoring/Prometheus/prometheus/tmpl:/tmpl
-      - ${PATH_TO_CONTAINERS}/Monitoring/Prometheus/prometheus/config:/config-prometheus
-      - ${PATH_TO_CONTAINERS}/Monitoring/Prometheus/prometheus/data:/prom-data
-      - ${PATH_TO_CONTAINERS}/Monitoring/Prometheus/alertmanager/tmpl:/tmpl-alertmanager
-      - ${PATH_TO_CONTAINERS}/Monitoring/Prometheus/alertmanager/config:/config-alertmanager
-      - ${PATH_TO_CONTAINERS}/Monitoring/Prometheus/alertmanager/data:/alert-data
-    environment:
-      - TMPL=/tmpl
-      - C_PROM=/config-prometheus
-      - TMPL_ALERT=/tmpl-alertmanager
-      - C_ALERT=/config-alertmanager
-      - DATA=/prom-data
-      - ALERTDATA=/alert-data
-      - NODE_TARGETS=${NODE_TARGETS:-node-exporter:9100}
-
-  prometheus:
-    image: prom/prometheus:v3.4.2
-    container_name: prometheus
-    restart: always
-    user: "65534:65534"
-    depends_on:
-      bootstrap:
-        condition: service_completed_successfully
-    command:
-      - --config.file=/etc/prometheus/prometheus.yml
-      - --storage.tsdb.path=/prometheus
-      - --storage.tsdb.retention.time=90d
-      - --storage.tsdb.retention.size=10GB
-      - --web.enable-lifecycle
-    volumes:
-      - ${PATH_TO_CONTAINERS}/Monitoring/Prometheus/prometheus/config:/etc/prometheus:ro
-      - ${PATH_TO_CONTAINERS}/Monitoring/Prometheus/prometheus/data:/prometheus
-    networks:
-      - monitoring-net
-
-  alertmanager:
-    image: prom/alertmanager:v0.28.1
-    container_name: alertmanager
-    restart: always
-    user: "65534:65534"
-    depends_on:
-      bootstrap:
-        condition: service_completed_successfully
-    command:
-      - --config.file=/etc/alertmanager/alertmanager.yml
-      - --storage.path=/data
-    volumes:
-      - ${PATH_TO_CONTAINERS}/Monitoring/Prometheus/alertmanager/config:/etc/alertmanager:ro
-      - ${PATH_TO_CONTAINERS}/Monitoring/Prometheus/alertmanager/data:/data
-    networks:
-      - monitoring-net
-
-  node-exporter:
-    image: prom/node-exporter:v1.9.0
-    container_name: node-exporter
-    restart: always
-    user: "0:0"
-    command:
-      - --path.rootfs=/host
-      - --path.procfs=/host/proc
-      - --path.sysfs=/host/sys
-      - --collector.systemd
-      - --collector.processes
-    volumes:
-      - /:/host:ro,rslave
-    networks:
-      - monitoring-net
-
-networks:
-  monitoring-net:
-    external: true
+e
