@@ -12,6 +12,7 @@ services:
       - -c
       - |
         printf 'DB_CONNECTION=mysql\nDB_HOST=mariadb\nDB_PORT=3306\nDB_SSL=false\n' > /app/.env
+        sed -i "s/connection: Env_1.default.get('DB_CONNECTION', 'sqlite')/connection: 'mysql'/" /app/build/config/database.js
         export APP_URL="$(cat /run/secrets/app_url)"
         export DB_DATABASE="$(cat /run/secrets/db_mysql_name)"
         export DB_USER="$(cat /run/secrets/db_mysql_user)"
