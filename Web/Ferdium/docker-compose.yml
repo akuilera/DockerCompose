@@ -20,7 +20,7 @@ services:
       - IS_DASHBOARD_ENABLED=true
       # Publicly reachable: no open registration. Flip to true only while
       # creating an account, then back to false (see README).
-      - IS_REGISTRATION_ENABLED=true
+      - IS_REGISTRATION_ENABLED=false
       - CONNECT_WITH_FRANZ=false
       # Generates and persists the JWT PEM keys under DATA_DIR on first run.
       - JWT_USE_PEM=true
