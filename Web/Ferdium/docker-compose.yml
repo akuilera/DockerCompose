@@ -4,26 +4,17 @@ services:
     container_name: ferdium-server
     restart: unless-stopped
     # App reads its config from env vars only (AdonisJS). It has no *_FILE
-    # support, so the personal/sensitive values are exported here from Docker
-    # secrets (same pattern used by GoAccess in Security/GoAccess) before
-    # delegating to the image's real entrypoint (/entrypoint.sh).
+    # support, so the only sensitive value (APP_URL) is exported here from a
+    # Docker secret (same pattern used by GoAccess in Security/GoAccess)
+    # before delegating to the image's real entrypoint (/entrypoint.sh).
     entrypoint:
       - /bin/sh
       - -c
       - |
-        printf 'DB_CONNECTION=mysql\nDB_HOST=mariadb\nDB_PORT=3306\nDB_SSL=false\n' > /app/.env
-        sed -i "s/connection: Env_1.default.get('DB_CONNECTION', 'sqlite')/connection: 'mysql'/" /app/build/config/database.js
         export APP_URL="$(cat /run/secrets/app_url)"
-        export DB_DATABASE="$(cat /run/secrets/db_mysql_name)"
-        export DB_USER="$(cat /run/secrets/db_mysql_user)"
-        export DB_PASSWORD="$(cat /run/secrets/db_mysql_password)"
         exec /entrypoint.sh
     environment:
       - NODE_ENV=production
-      - DB_CONNECTION=mysql
-      - DB_HOST=mariadb
-      - DB_PORT=3306
-      - DB_SSL=false
       - DATA_DIR=/data
       - IS_CREATION_ENABLED=true
       - IS_DASHBOARD_ENABLED=true
@@ -38,27 +29,14 @@ services:
       - ${PATH_TO_CONTAINERS}/Ferdium/recipes:/app/build/recipes
     secrets:
       - app_url
-      - db_mysql_name
-      - db_mysql_user
-      - db_mysql_password
     networks:
-      - db-net
       - proxy-net
 
 secrets:
   app_url:
     file: "${PATH_TO_SECRETS}/Ferdium/app_url"
-  db_mysql_name:
-    file: "${PATH_TO_SECRETS}/Ferdium/db_mysql_name"
-  db_mysql_user:
-    file: "${PATH_TO_SECRETS}/Ferdium/db_mysql_user"
-  db_mysql_password:
-    file: "${PATH_TO_SECRETS}/Ferdium/db_mysql_password"
 
 networks:
-  db-net:
-    external: true
-    name: db-net
   proxy-net:
     external: true
     name: proxy-net
