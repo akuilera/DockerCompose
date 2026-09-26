@@ -1,0 +1,13 @@
+{
+  "id": "cloudflare",
+  "name": "Cloudflare",
+  "version": "1.0.0",
+  "license": "MIT",
+  "config": {
+    "serviceURL": "https://dash.cloudflare.com/",
+    "hasCustomUrl": false,
+    "hasNotificationSound": false,
+    "hasDirectMessages": false,
+    "hasIndirectMessages": false
+  }
+}

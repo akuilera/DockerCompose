@@ -1,0 +1,12 @@
+{
+  "id": "<service-id>-badges",
+  "name": "<Service Name>",
+  "version": "1.0.0",
+  "license": "MIT",
+  "config": {
+    "serviceURL": "https://app.example.com/",
+    "hasNotificationSound": true,
+    "hasDirectMessages": true,
+    "hasIndirectMessages": true
+  }
+}

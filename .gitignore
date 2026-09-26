@@ -8,6 +8,9 @@ global.env
 # Prometheus: host targets with real hostnames live only on the server.
 **/Prometheus/prometheus/targets/nodes.yml
 
+# Ferdium: Private recipes from Ferdium
+**/Ferdium/Custom Services/Private/
+
 # Working tracking (kept local, never committed)
 TODO.md
 AGENTS.md

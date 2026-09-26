@@ -1,0 +1,13 @@
+{
+  "id": "borg-ui",
+  "name": "Borg-UI",
+  "version": "1.0.0",
+  "license": "MIT",
+  "config": {
+    "serviceURL": "",
+    "hasCustomUrl": true,
+    "hasNotificationSound": false,
+    "hasDirectMessages": false,
+    "hasIndirectMessages": false
+  }
+}

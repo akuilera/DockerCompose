@@ -1,0 +1,13 @@
+{
+  "id": "syncthing",
+  "name": "Syncthing",
+  "version": "1.0.0",
+  "license": "MIT",
+  "config": {
+    "serviceURL": "",
+    "hasCustomUrl": true,
+    "hasNotificationSound": false,
+    "hasDirectMessages": false,
+    "hasIndirectMessages": false
+  }
+}

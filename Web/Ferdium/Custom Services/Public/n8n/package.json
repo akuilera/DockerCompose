@@ -1,0 +1,13 @@
+{
+  "id": "n8n",
+  "name": "n8n",
+  "version": "1.0.0",
+  "license": "MIT",
+  "config": {
+    "serviceURL": "",
+    "hasCustomUrl": true,
+    "hasNotificationSound": false,
+    "hasDirectMessages": false,
+    "hasIndirectMessages": false
+  }
+}

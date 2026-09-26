@@ -1,0 +1,10 @@
+{
+  "id": "<service-id>-mobile",
+  "name": "<Service Name> Mobile",
+  "version": "1.0.0",
+  "license": "MIT",
+  "config": {
+    "serviceURL": "https://m.example.com/",
+    "hasNotificationSound": false
+  }
+}

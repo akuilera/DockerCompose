@@ -24,6 +24,11 @@ services:
       - CONNECT_WITH_FRANZ=false
       # Generates and persists the JWT PEM keys under DATA_DIR on first run.
       - JWT_USE_PEM=true
+      # Cosmetic only: pins the sqlite filename to the one that actually exists
+      # (./data/ferdium.sqlite) so future boots stop logging
+      # "Database file '/data/ferdium_db.sqlite' not found ... empty will be created".
+      # No effect on the running container (takes effect on next `up -d --force-recreate`).
+      - DB_DATABASE=ferdium
     volumes:
       - ${PATH_TO_CONTAINERS}/Ferdium/data:/data
       - ${PATH_TO_CONTAINERS}/Ferdium/recipes:/app/build/recipes

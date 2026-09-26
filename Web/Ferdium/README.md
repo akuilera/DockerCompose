@@ -100,6 +100,12 @@ To create your account(s):
 
 In the Ferdium app login screen choose **Custom server** and enter the full URL: `https://ferdium.example.com`. Sign in with the account created above.
 
+## Custom services (recipes)
+
+This stack ships `IS_CREATION_ENABLED=true`, so logged-in users can upload their own services ("recipes"). Open `https://ferdium.example.com/new`, fill in the form and drag & drop the raw recipe files (`package.json`, `index.js`, `icon.svg`, plus optional `webview.js` / `darkmode.css`); the server compiles them into the `recipes` volume and the client finds them searching for `ferdium:custom`. This also covers services that only ship a mobile web version, by faking an Android user agent in `index.js`.
+
+Full guide, package.json/webview.js reference and ready-to-edit examples (with placeholders, no private data): [Custom Services/README.md](Custom%20Services/README.md).
+
 ## Backup
 
 The data lives in `$PATH_TO_CONTAINERS/Ferdium/data` (SQLite-era db, plus the generated JWT/APP keys) and the compiled recipes in `.../Ferdium/recipes`. Back them up like any other homelab volume:
