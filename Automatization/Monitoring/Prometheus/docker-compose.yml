@@ -42,7 +42,165 @@ services:
           > "$$TMPL/prometheus.yml"
       fi
       if [ ! -s "$$TMPL/rules/alerts.yml" ]; then
-        printf "%s\n" "groups: []" > "$$TMPL/rules/alerts.yml"
+        printf "%s\n" \
+          "# Seeded by the bootstrap in docker-compose.yml -- this is the live file." \
+          "# Edit ../prometheus/rules/alerts.yml in the repo and re-run the sync, or" \
+          "# edit this file on the server directly and reload Prometheus with:" \
+          "#   docker kill -s HUP prometheus" \
+          "" \
+          "groups:" \
+          "  - name: infrastructure" \
+          "    rules:" \
+          "      - alert: HostDown" \
+          "        expr: up{job=\"node\"} == 0" \
+          "        for: 5m" \
+          "        labels:" \
+          "          severity: critical" \
+          "        annotations:" \
+          "          summary: \"{{ \$$labels.host }} is not reachable\"" \
+          "          description: \"No successful scrape for 5 minutes. This is what a hard freeze looks like from Prometheus: the box stops answering entirely, so nothing on it can report anything.\"" \
+          "" \
+          "      - alert: HostDownBrief" \
+          "        expr: up{job=\"node\"} == 0" \
+          "        for: 3m" \
+          "        labels:" \
+          "          severity: warning" \
+          "        annotations:" \
+          "          summary: \"{{ \$$labels.host }} stopped answering (3m)\"" \
+          "          description: \"Early warning before HostDown fires. If the machine comes back on its own, check node_gpu_heartbeat_max_gap_seconds for the actual outage length.\"" \
+          "" \
+          "      - alert: HostRebooted" \
+          "        expr: node_time_seconds{job=\"node\"} - node_boot_time_seconds{job=\"node\"} < 300" \
+          "        for: 1m" \
+          "        labels:" \
+          "          severity: info" \
+          "        annotations:" \
+          "          summary: \"{{ \$$labels.host }} rebooted in the last 5 minutes\"" \
+          "          description: \"Uptime is under 5 minutes. If node_gpu_heartbeat_max_gap_seconds is also large, the reboot followed a freeze rather than being requested.\"" \
+          "" \
+          "      - alert: HighCpuUsage" \
+          "        expr: 100 - (avg by (instance) (rate(node_cpu_seconds_total{job=\"node\", mode=\"idle\"}[5m])) * 100) > 90" \
+          "        for: 10m" \
+          "        labels:" \
+          "          severity: warning" \
+          "        annotations:" \
+          "          summary: \"High CPU on {{ \$$labels.host }} ({{ \$$labels.instance }})\"" \
+          "" \
+          "      - alert: HighMemoryUsage" \
+          "        expr: 100 * (1 - node_memory_MemAvailable_bytes{job=\"node\"} / node_memory_MemTotal_bytes{job=\"node\"}) > 90" \
+          "        for: 10m" \
+          "        labels:" \
+          "          severity: warning" \
+          "        annotations:" \
+          "          summary: \"High memory on {{ \$$labels.host }} ({{ \$$labels.instance }})\"" \
+          "" \
+          "      - alert: FilesystemAlmostFull" \
+          "        expr: (1 - node_filesystem_avail_bytes{job=\"node\", fstype!~\"tmpfs|overlay|cgroup.*|proc|sysfs|devpts|fuse.*|squashfs|autofs\"} / node_filesystem_size_bytes{job=\"node\", fstype!~\"tmpfs|overlay|cgroup.*|proc|sysfs|devpts|fuse.*|squashfs|autofs\"}) * 100 >= 95" \
+          "        for: 10m" \
+          "        labels:" \
+          "          severity: warning" \
+          "        annotations:" \
+          "          summary: \"Filesystem almost full on {{ \$$labels.mountpoint }} ({{ \$$labels.host }})\"" \
+          "" \
+          "      - alert: DiskFillPredicted" \
+          "        expr: predict_linear(node_filesystem_avail_bytes{job=\"node\", fstype!~\"tmpfs|overlay|cgroup.*|proc|sysfs|devpts|fuse.*|squashfs|autofs\"}[6h], 24*3600) < 0" \
+          "        for: 30m" \
+          "        labels:" \
+          "          severity: warning" \
+          "        annotations:" \
+          "          summary: \"Disk {{ \$$labels.mountpoint }} on {{ \$$labels.host }} will fill within 24h\"" \
+          "" \
+          "      - alert: DiskBusy" \
+          "        expr: rate(node_disk_io_time_seconds_total{job=\"node\", device!~\"^(loop|ram|fd)[0-9]*\$$\"}[5m]) > 0.95" \
+          "        for: 10m" \
+          "        labels:" \
+          "          severity: warning" \
+          "        annotations:" \
+          "          summary: \"Disk {{ \$$labels.device }} on {{ \$$labels.host }} is over 95% busy\"" \
+          "          description: \"Sustained saturation for 10 minutes. A failing drive re-reading the same bad blocks looks exactly like this, and a spinning disk at 100% is one of the symptoms of the freeze.\"" \
+          "" \
+          "      - alert: NvmeMediaErrors" \
+          "        expr: increase(node_nvme_media_errors_total{job=\"node\"}[1h]) > 0" \
+          "        labels:" \
+          "          severity: warning" \
+          "        annotations:" \
+          "          summary: \"NVMe media errors on {{ \$$labels.device }} ({{ \$$labels.host }})\"" \
+          "          description: \"The drive is reporting uncorrectable or corrected media errors. This is hardware, not a driver, and it does not go away on its own.\"" \
+          "" \
+          "      - alert: NodeExporterCollectorFailing" \
+          "        expr: node_scrape_collector_success{job=\"node\", collector=~\"^(boot_time|cpu|diskstats|filesystem|hwmon|loadavg|meminfo|swap|systemd|textfile|time|uname)\$$\"} == 0" \
+          "        for: 15m" \
+          "        labels:" \
+          "          severity: warning" \
+          "        annotations:" \
+          "          summary: \"node_exporter collector {{ \$$labels.collector }} failing on {{ \$$labels.host }}\"" \
+          "          description: \"A collector that normally works has been failing for 15 minutes, so metrics are silently missing even though the target is up.\"" \
+          "" \
+          "  - name: thermal" \
+          "    rules:" \
+          "      - alert: HighGpuTemperature" \
+          "        expr: node_gpu_temperature_celsius{job=\"node\"} > 85" \
+          "        for: 10m" \
+          "        labels:" \
+          "          severity: warning" \
+          "        annotations:" \
+          "          summary: \"GPU {{ \$$labels.gpu }} on {{ \$$labels.host }} is at {{ \$$value }} C\"" \
+          "          description: \"Above 85 C for 10 minutes on a laptop GPU. Check GpuHardwareThrottle at the same time, and check whether something is holding the dGPU awake.\"" \
+          "" \
+          "      - alert: HighGpuTemperatureCritical" \
+          "        expr: node_gpu_temperature_celsius{job=\"node\"} > 92" \
+          "        labels:" \
+          "          severity: critical" \
+          "        annotations:" \
+          "          summary: \"GPU {{ \$$labels.gpu }} on {{ \$$labels.host }} is at {{ \$$value }} C\"" \
+          "          description: \"At or past the thermal target. A laptop GPU that stays here will drop clocks and can thermal-trip the whole machine.\"" \
+          "" \
+          "      - alert: GpuHardwareThrottle" \
+          "        expr: node_gpu_throttle_reason_active{job=\"node\", reason=~\"hw_slowdown|hw_thermal_slowdown|hw_power_brake_slowdown\"} == 1" \
+          "        for: 5m" \
+          "        labels:" \
+          "          severity: warning" \
+          "        annotations:" \
+          "          summary: \"GPU {{ \$$labels.gpu }} on {{ \$$labels.host }} is hardware throttling ({{ \$$labels.reason }})\"" \
+          "          description: \"A hardware-level throttle is asserted. This is the GPU protecting itself from heat or power, and it is worth correlating with any freeze.\"" \
+          "" \
+          "      - alert: HighSystemTemperature" \
+          "        expr: max by (instance) (node_hwmon_temp_celsius{job=\"node\"}) > 90" \
+          "        for: 10m" \
+          "        labels:" \
+          "          severity: warning" \
+          "        annotations:" \
+          "          summary: \"A sensor on {{ \$$labels.instance }} is at {{ \$$value }} C\"" \
+          "          description: \"Highest of all hwmon sensors: CPU, NVMe or GPU. Sensors that do not report a reading are absent from this metric rather than reported as zero, so this only fires on real readings.\"" \
+          "" \
+          "  - name: gpu" \
+          "    rules:" \
+          "      - alert: GpuQueryFailed" \
+          "        expr: node_gpu_query_success{job=\"node\"} == 0" \
+          "        for: 2m" \
+          "        labels:" \
+          "          severity: warning" \
+          "        annotations:" \
+          "          summary: \"nvidia-smi is not answering on {{ \$$labels.host }}\"" \
+          "          description: \"The GPU heartbeat could not query nvidia-smi within its timeout. A hung nvidia-smi is a known failure mode on this class of laptop and can precede a full freeze.\"" \
+          "" \
+          "      - alert: GpuHeartbeatStale" \
+          "        expr: time() - node_gpu_last_query_timestamp_seconds{job=\"node\"} > 120" \
+          "        for: 2m" \
+          "        labels:" \
+          "          severity: warning" \
+          "        annotations:" \
+          "          summary: \"GPU heartbeat is stale on {{ \$$labels.host }}\"" \
+          "          description: \"The exporter is still answering, but the GPU heartbeat file has not been refreshed for over 2 minutes, so the GPU is wedged while the rest of the machine is up.\"" \
+          "" \
+          "      - alert: GpuFreezeDetected" \
+          "        expr: node_gpu_heartbeat_max_gap_seconds{job=\"node\"} > 300" \
+          "        labels:" \
+          "          severity: warning" \
+          "        annotations:" \
+          "          summary: \"Hard freeze recorded on {{ \$$labels.host }}: heartbeat was interrupted for {{ \$$value | humanizeDuration }}\"" \
+          "          description: \"Latched by the heartbeat and the only hard-freeze evidence that reaches Prometheus, because the box is by definition down while a freeze happens. It survives reboots for 30 days; once you have finished investigating, clear it by removing the file /var/lib/node_exporter/textfile_collector/nvidia_gpu.maxgap\"" \
+          > "$$TMPL/rules/alerts.yml"
       fi
       if [ ! -s "$$TMPL_ALERT/alertmanager.yml" ]; then
         printf "%s\n" \
@@ -132,8 +290,14 @@ services:
     command:
       - --config.file=/etc/prometheus/prometheus.yml
       - --storage.tsdb.path=/prometheus
+      # Both limits are enforced and whichever is reached first wins, so
+      # retention.size is what actually decides how much history survives.
+      # At a 15s scrape interval, 20GB covers ~90 days for roughly 10k-14k
+      # series. Check numSeries(prometheus_tsdb_head_series) under
+      # Status -> TSDB before adding targets, and raise this if you get close:
+      # a silently shortened history is worse than a known limit.
       - --storage.tsdb.retention.time=90d
-      - --storage.tsdb.retention.size=10GB
+      - --storage.tsdb.retention.size=20GB
       - --web.enable-lifecycle
     volumes:
       - ${PATH_TO_CONTAINERS}/Monitoring/Prometheus/prometheus/config:/etc/prometheus:ro

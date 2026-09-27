@@ -1,0 +1,33 @@
+[Unit]
+Description=Prometheus node_exporter (host metrics)
+Documentation=https://prometheus.io/docs/guides/node-exporter/
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+User=node_exporter
+Group=node_exporter
+ExecStart=/usr/local/bin/node_exporter \
+  --web.listen-address=:9100 \
+  --collector.textfile.directory=/var/lib/node_exporter/textfile_collector \
+  --collector.systemd \
+  --collector.swap \
+  --collector.diskstats.device-exclude='^(loop|ram|fd)[0-9]*$' \
+  --collector.filesystem.mount-points-exclude='^/(dev|proc|sys)($|/)|^/run/(udev|lock|snap|user)(/.*)?' \
+  --collector.filesystem.fs-types-exclude='^(autofs|binfmt_misc|cgroup2?|configfs|debugfs|devpts|devtmpfs|fusectl|hugetlbfs|iso9660|jffs2|mqueue|nsfs|overlay|proc|procfs|pstore|rpc_pipefs|securityfs|selinuxfs|squashfs|sysfs|tmpfs|tracefs)$'
+Restart=always
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+RestrictRealtime=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,16 @@
+[Unit]
+Description=Run the NVIDIA GPU heartbeat every 15s
+Documentation=man:systemd.timer(5)
+
+[Timer]
+# OnUnitActiveSec (not OnCalendar) so the cadence follows the previous run and
+# cannot pile up: a slow nvidia-smi delays the next run instead of stacking.
+OnUnitActiveSec=15s
+AccuracySec=1s
+# No Persistent=true: on resume we do not want a burst of catch-up runs.
+Persistent=false
+RandomizedDelaySec=0
+Unit=nvidia-gpu-heartbeat.service
+
+[Install]
+WantedBy=timers.target
