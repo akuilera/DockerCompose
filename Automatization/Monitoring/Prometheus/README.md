@@ -16,7 +16,7 @@ The device registry has two halves:
 A device entry looks like:
 
 ```env
-DEVICE_NAME="Lenovo Thinkpad"      # title shown in Grafana, and the host label
+DEVICE_NAME="My Laptop"      # title shown in Grafana, and the host label
 DEVICE_ADDR=<ip>:9100              # where Prometheus scrapes node_exporter
 DEVICE_BATTERY=1                   # dashboard includes the Battery row only when set
 DEVICE_GPU=0                       # dashboard includes the NVIDIA row only when set
@@ -78,7 +78,7 @@ The generator walks every `Devices/<device>/.env` inside the mounted registry an
 - targets: ['<ip>:9100']
   labels:
     job: 'node'
-    host: 'Lenovo Thinkpad'
+    host: 'My Laptop'
 ```
 
 After writing the file the bootstrap runs a **structural guard**: it checks that the number of `job:`/`host:` label blocks equals the number of items and that each block is complete, and it exits non-zero (failing the stack) if the file is malformed or if there are no devices at all. The guard is deliberately cheap and dependency-free, so it only validates that structure — it is not a full YAML parse. It exists because a malformed file used to fail *silently from the user's point of view*: Prometheus dropped the entire `node` job and every dashboard went to `No data` while the stack still looked healthy.

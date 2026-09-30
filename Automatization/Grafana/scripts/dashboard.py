@@ -21,7 +21,7 @@ BUILT_IN_ANNOTATION = {
 
 
 def slug(name):
-    """URL-safe uid from a device name (e.g. "Lenovo Thinkpad" -> "lenovo-thinkpad")."""
+    """URL-safe uid from a device name (e.g. "My Laptop" -> "my-laptop")."""
     s = re.sub(r"[^A-Za-z0-9]+", "-", name.strip().lower()).strip("-")
     return s or "device"
 

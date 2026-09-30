@@ -32,7 +32,7 @@ The device registry `Devices/` is the single source of what is scraped and rende
 A device entry looks like:
 
 ```env
-DEVICE_NAME="Lenovo Thinkpad"      # dashboard title, uid and the host label
+DEVICE_NAME="My Laptop"      # dashboard title, uid and the host label
 DEVICE_ADDR=<ip>:9100              # where Prometheus scrapes node_exporter
 DEVICE_BATTERY=1                   # render the Battery row only when set
 DEVICE_GPU=0                       # render the NVIDIA row only when set
