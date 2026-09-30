@@ -22,6 +22,10 @@ AGENTS.md
 .DS_Store
 Thumbs.db
 
+# Python bytecode
+**/__pycache__/
+*.pyc
+
 # Jupyter / Notebooks
 .ipynb_checkpoints/
 .virtual_documents/
