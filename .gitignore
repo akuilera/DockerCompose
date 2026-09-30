@@ -11,6 +11,9 @@ global.env
 # Ferdium: Private recipes from Ferdium
 **/Ferdium/Custom Services/Private/
 
+# Grafana: Devices monitored by Grafana
+**/Monitoring/Devices/
+
 # Working tracking (kept local, never committed)
 TODO.md
 AGENTS.md

@@ -84,16 +84,26 @@ groups:
           summary: "Disk {{ $labels.device }} on {{ $labels.host }} is over 95% busy"
           description: "Sustained saturation for 10 minutes. A failing drive re-reading the same bad blocks looks exactly like this, and a spinning disk at 100% is one of the symptoms of the freeze."
 
-      - alert: NvmeMediaErrors
-        expr: increase(node_nvme_media_errors_total{job="node"}[1h]) > 0
+      - alert: BatteryLow
+        expr: node_power_supply_capacity{job="node"} < 20
+        for: 5m
         labels:
           severity: warning
         annotations:
-          summary: "NVMe media errors on {{ $labels.device }} ({{ $labels.host }})"
-          description: "The drive is reporting uncorrectable or corrected media errors. This is hardware, not a driver, and it does not go away on its own."
+          summary: "Battery low on {{ $labels.host }} ({{ $value }}%)"
+          description: "{{ $labels.power_supply }} on {{ $labels.host }} has been under 20% for 5 minutes. Only fires on machines that expose a battery; desktops with no battery are inert."
+
+      - alert: BatteryHealthDegraded
+        expr: node_power_supply_energy_full / node_power_supply_energy_full_design < 0.70
+        for: 1h
+        labels:
+          severity: warning
+        annotations:
+          summary: "Battery health degraded on {{ $labels.host }} ({{ $value | humanizePercentage }} of design)"
+          description: "Retained capacity {{ $labels.power_supply }} on {{ $labels.host }} is below 70% of design. It fires only when health gets worse, not at normal wear level."
 
       - alert: NodeExporterCollectorFailing
-        expr: node_scrape_collector_success{job="node", collector=~"^(boot_time|cpu|diskstats|filesystem|hwmon|loadavg|meminfo|swap|systemd|textfile|time|uname)$"} == 0
+        expr: node_scrape_collector_success{job="node", collector=~"^(boot_time|cpu|diskstats|filesystem|hwmon|loadavg|meminfo|powersupplyclass|swap|systemd|textfile|time|uname)$"} == 0
         for: 15m
         labels:
           severity: warning

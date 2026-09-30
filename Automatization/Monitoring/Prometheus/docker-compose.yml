@@ -1,12 +1,15 @@
 # Monitoring stack: Prometheus + Alertmanager + Node Exporter.
 # Deploy/update via Portainer "Stack from Git". All config and data lives under
-# ${PATH_TO_CONTAINERS}; nothing is read from the clone at runtime.
+# ${PATH_TO_CONTAINERS}; scripts and the device registry are read from the
+# repository clone at ${PATH_TO_COMPOSE}.
 #   tmpl    = templates (regenerated only if missing; edit them to restore)
 #   config  = files Prometheus/Alertmanager actually read (edit -> HUP)
 #   data    = writable runtime data (owner 65534 = nobody)
-# Add devices by editing NODE_TARGETS (comma-separated name=host:port) -> Update.
-#   The "name=" prefix is what sets labels.host=<name> on the target; the Grafana
-#   dashboards filter on host="$host", so a target without it renders "No data".
+# Add devices by creating one Devices/<device>/.env in the clone (the registry
+# is mounted read-only at /devices). The bootstrap turns each file into a target
+# with labels.host=DEVICE_NAME; the Grafana dashboards filter on host="$host".
+# An empty or missing registry aborts the bootstrap with a pointer to the repo
+# template (Automatization/Monitoring/Devices.example/).
 
 services:
   bootstrap:
@@ -119,16 +122,26 @@ services:
           "          summary: \"Disk {{ \$$labels.device }} on {{ \$$labels.host }} is over 95% busy\"" \
           "          description: \"Sustained saturation for 10 minutes. A failing drive re-reading the same bad blocks looks exactly like this, and a spinning disk at 100% is one of the symptoms of the freeze.\"" \
           "" \
-          "      - alert: NvmeMediaErrors" \
-          "        expr: increase(node_nvme_media_errors_total{job=\"node\"}[1h]) > 0" \
+          "      - alert: BatteryLow" \
+          "        expr: node_power_supply_capacity{job=\"node\"} < 20" \
+          "        for: 5m" \
           "        labels:" \
           "          severity: warning" \
           "        annotations:" \
-          "          summary: \"NVMe media errors on {{ \$$labels.device }} ({{ \$$labels.host }})\"" \
-          "          description: \"The drive is reporting uncorrectable or corrected media errors. This is hardware, not a driver, and it does not go away on its own.\"" \
+          "          summary: \"Battery low on {{ \$$labels.host }} ({{ \$$value }}%)\"" \
+          "          description: \"{{ \$$labels.power_supply }} on {{ \$$labels.host }} has been under 20% for 5 minutes. Only fires on machines that expose a battery; desktops with no battery are inert.\"" \
+          "" \
+          "      - alert: BatteryHealthDegraded" \
+          "        expr: node_power_supply_energy_full / node_power_supply_energy_full_design < 0.70" \
+          "        for: 1h" \
+          "        labels:" \
+          "          severity: warning" \
+          "        annotations:" \
+          "          summary: \"Battery health degraded on {{ \$$labels.host }} ({{ \$$value | humanizePercentage }} of design)\"" \
+          "          description: \"Retained capacity {{ \$$labels.power_supply }} on {{ \$$labels.host }} is below 70% of design. It fires only when health gets worse, not at normal wear level.\"" \
           "" \
           "      - alert: NodeExporterCollectorFailing" \
-          "        expr: node_scrape_collector_success{job=\"node\", collector=~\"^(boot_time|cpu|diskstats|filesystem|hwmon|loadavg|meminfo|swap|systemd|textfile|time|uname)\$$\"} == 0" \
+          "        expr: node_scrape_collector_success{job=\"node\", collector=~\"^(boot_time|cpu|diskstats|filesystem|hwmon|loadavg|meminfo|powersupplyclass|swap|systemd|textfile|time|uname)\$$\"} == 0" \
           "        for: 15m" \
           "        labels:" \
           "          severity: warning" \
@@ -223,43 +236,54 @@ services:
       done
       [ -e "$$C_ALERT/alertmanager.yml" ] || cp "$$TMPL_ALERT/alertmanager.yml" "$$C_ALERT/alertmanager.yml"
 
-      echo "[bootstrap] 4/5 nodes.yml (regenerado siempre desde NODE_TARGETS)"
+      echo "[bootstrap] 4/5 nodes.yml (always regenerated from Devices/)"
       : > "$$C_PROM/targets/nodes.yml"
-      printf "%s\n" "$$NODE_TARGETS" | tr "," "\n" | while IFS= read -r t; do
-        [ -n "$$t" ] || continue
-        case "$$t" in
-          *=*)
-            name="$${t%%=*}"; addr="$${t##*=}"
-            [ -n "$$addr" ] || continue
-            printf "%s\n" \
-              "- targets:" \
-              "    - $$addr" \
-              "  labels:" \
-              "    host: $$name" \
-              >> "$$C_PROM/targets/nodes.yml"
-            ;;
-          *)
-            printf "%s\n" \
-              "- targets:" \
-              "    - $$t" \
-              >> "$$C_PROM/targets/nodes.yml"
+      n_devices=0
+      for f in /devices/*/.env; do
+        [ -f "$$f" ] || continue
+        unset DEVICE_NAME DEVICE_ADDR DEVICE_BATTERY DEVICE_GPU
+        . "$$f"
+        [ -n "$${DEVICE_NAME:-}" ] || {
+          echo "[bootstrap] ERROR: $$f -> DEVICE_NAME is missing"
+          exit 1
+        }
+        case "$$DEVICE_NAME" in
+          *[!A-Za-z0-9.\ _-]*)
+            echo "[bootstrap] ERROR: $$f -> DEVICE_NAME has disallowed characters"
+            echo "[bootstrap]        allowed: [A-Za-z0-9 ._-]"
+            exit 1
             ;;
         esac
+        [ -n "$${DEVICE_ADDR:-}" ] || {
+          echo "[bootstrap] ERROR: $$f -> DEVICE_ADDR is missing"
+          exit 1
+        }
+        printf "%s\n" \
+          "- targets:" \
+          "    - $$DEVICE_ADDR" \
+          "  labels:" \
+          "    host: $$DEVICE_NAME" \
+          >> "$$C_PROM/targets/nodes.yml"
+        n_devices=$$((n_devices + 1))
       done
 
       echo "[bootstrap] 5/5 validar nodes.yml"
       n_blocks=$$(grep -c "^[[:space:]]*-[[:space:]]targets:[[:space:]]*$$" "$$C_PROM/targets/nodes.yml" || true)
       n_items=$$(grep -c "^[[:space:]]*-[[:space:]]" "$$C_PROM/targets/nodes.yml" || true)
-      if [ "$$n_blocks" -eq 0 ]; then
-        echo "[bootstrap] ERROR: nodes.yml sin targets (revisa NODE_TARGETS)"
+      if [ "$$n_blocks" -eq 0 ] || [ "$$n_devices" -eq 0 ]; then
+        echo "[bootstrap] ERROR: no devices found in /devices."
+        echo "[bootstrap]        Create one per machine in the repository clone at"
+        echo "[bootstrap]        \$${PATH_TO_COMPOSE}/Automatization/Monitoring/Devices/"
+        echo "[bootstrap]        following the template: Automatization/Monitoring/Devices.example/example/.env.example"
+        echo "[bootstrap]        (DEVICE_NAME=..., DEVICE_ADDR=ip:9100, DEVICE_BATTERY, DEVICE_GPU)"
         exit 1
       fi
       if [ "$$n_items" -ne $$((n_blocks * 2)) ]; then
-        echo "[bootstrap] ERROR: nodes.yml malformado ($$n_items items para $$n_blocks bloques);"
-        echo "[bootstrap]        Prometheus no podria leerlo y todos los paneles quedarian vacios."
+        echo "[bootstrap] ERROR: nodes.yml malformed ($$n_items items for $$n_blocks blocks);"
+        echo "[bootstrap]        Prometheus could not read it and every panel would be empty."
         exit 1
       fi
-      echo "[bootstrap] nodes.yml OK: $$n_blocks target(s)"
+      echo "[bootstrap] nodes.yml OK: $$n_blocks target(s) for $$n_devices device(s)"
 
       chown -R 65534:65534 "$$DATA" "$$ALERTDATA"
       echo "[bootstrap] done"'
@@ -270,6 +294,10 @@ services:
       - ${PATH_TO_CONTAINERS}/Monitoring/Prometheus/alertmanager/tmpl:/tmpl-alertmanager
       - ${PATH_TO_CONTAINERS}/Monitoring/Prometheus/alertmanager/config:/config-alertmanager
       - ${PATH_TO_CONTAINERS}/Monitoring/Prometheus/alertmanager/data:/alert-data
+      # Device registry, read from the repository clone (not from the container
+      # data root): one <device>/.env per host. The whole Devices/ folder is
+      # gitignored; the committed reference is Devices.example/.
+      - ${PATH_TO_COMPOSE}/Automatization/Monitoring/Devices:/devices:ro
     environment:
       - TMPL=/tmpl
       - C_PROM=/config-prometheus
@@ -277,7 +305,6 @@ services:
       - C_ALERT=/config-alertmanager
       - DATA=/prom-data
       - ALERTDATA=/alert-data
-      - NODE_TARGETS=${NODE_TARGETS:-server=node-exporter:9100}
 
   prometheus:
     image: prom/prometheus:v3.4.2
@@ -319,21 +346,6 @@ services:
     volumes:
       - ${PATH_TO_CONTAINERS}/Monitoring/Prometheus/alertmanager/config:/etc/alertmanager:ro
       - ${PATH_TO_CONTAINERS}/Monitoring/Prometheus/alertmanager/data:/data
-    networks:
-      - monitoring-net
-
-  node-exporter:
-    image: prom/node-exporter:v1.9.0
-    container_name: node-exporter
-    restart: always
-    user: "0:0"
-    command:
-      - --path.rootfs=/host
-      - --path.procfs=/host/proc
-      - --path.sysfs=/host/sys
-      - --collector.processes
-    volumes:
-      - /:/host:ro,rslave
     networks:
       - monitoring-net
 
