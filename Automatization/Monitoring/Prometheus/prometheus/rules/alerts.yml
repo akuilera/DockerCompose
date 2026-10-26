@@ -1,9 +1,9 @@
-# Alert rules -- REFERENCE COPY.
+# Alert rules -- SOURCE OF TRUTH.
 #
-# KEEP IN SYNC with the bootstrap in ../docker-compose.yml, which is what the
-# running Prometheus actually loads. The bootstrap seeds an identical file into
-# {tmpl,config}/rules/alerts.yml; if you add a rule here, add it there too, or
-# copy this file across the server and HUP Prometheus (see ../README.md).
+# The bootstrap (../scripts/bootstrap.sh) copies this file into
+# {tmpl,config}/rules/alerts.yml on first run, and that is what the running
+# Prometheus loads. Edit it here and re-run the stack, or copy it across the
+# server and HUP Prometheus (see ../README.md). Keep no second copy.
 #
 # Scoping notes, learned the hard way:
 #   * Every rule is scoped to job="node" so it never fires on Prometheus itself.
@@ -12,6 +12,10 @@
 #   * NodeExporterCollectorFailing deliberately uses a collector allowlist.
 #     Collectors that are absent on a given kernel or GPU report 0 by design,
 #     and alerting on those is pure noise.
+#   * The memory, IO and OOM rules key off the vmstat and pressure collectors, which node_exporter enables by default but which need a kernel >= 4.20 built with CONFIG_PSI=y. When /proc/pressure is missing the pressure collector emits no series at all while up stays 1, so every PSI rule below is automatically inert on a kernel without PSI instead of firing wrongly, which is why none of them needs an explicit presence check.
+#   * PSI rules alert on the "full" series (node_pressure_*_stalled_seconds_total) and never on "some" (node_pressure_*_waiting_seconds_total). "full" accumulates wall-clock stall time exactly once, so rate(...[5m]) is a fraction in 0..1 and one threshold means the same thing on a 4-core laptop and on a 64-core server, whereas "some" is summed per waiting task and its rate is unbounded, so the same threshold silently means something different depending on how many tasks exist. node_exporter already reports PSI in seconds, so the widely copied rate(node_pressure_memory_waiting_seconds_total[1m]) * 1000000 > 100000 snippet is both the wrong series and a 1e6 unit error stacked on top of reading "some" as a percentage.
+#   * node_vmstat_oom_kill is exported untyped but is semantically a monotonic counter that resets on reboot, so it is read with increase() and never delta(). node_procs_blocked is a gauge of processes in uninterruptible sleep and is read with max_over_time() and never increase(). node_kernel_hung_tasks_total only exists where the kernel exposes kernel.hung_task_detect_count, so that rule is inert everywhere else.
+#   * Rules aggregate by (host) rather than by (instance). instance is the scrape address, which on a remote device is an overlay IP, so carrying it into an alert label or a legend leaks a real address and groups series per scrape address instead of per machine, and every dashboard here is already pinned to a single host. The battery rules keep power_supply in the grouping on purpose, so the annotation can name the pack it is talking about while still never carrying instance.
 
 groups:
   - name: infrastructure
@@ -44,20 +48,22 @@ groups:
           description: "Uptime is under 5 minutes. If node_gpu_heartbeat_max_gap_seconds is also large, the reboot followed a freeze rather than being requested."
 
       - alert: HighCpuUsage
-        expr: 100 - (avg by (instance) (rate(node_cpu_seconds_total{job="node", mode="idle"}[5m])) * 100) > 90
+        expr: 100 - (avg by (host) (rate(node_cpu_seconds_total{job="node", mode="idle"}[5m])) * 100) > 90
         for: 10m
         labels:
           severity: warning
         annotations:
-          summary: "High CPU on {{ $labels.host }} ({{ $labels.instance }})"
+          summary: "High CPU on {{ $labels.host }} ({{ $value | printf \"%.1f\" }}%)"
+          description: "Sustained above 90% for 10 minutes. Aggregation is by host and not by instance so that the alert never carries the scrape address into its labels."
 
       - alert: HighMemoryUsage
-        expr: 100 * (1 - node_memory_MemAvailable_bytes{job="node"} / node_memory_MemTotal_bytes{job="node"}) > 90
+        expr: max by (host) (100 * (1 - node_memory_MemAvailable_bytes{job="node"} / node_memory_MemTotal_bytes{job="node"})) > 90
         for: 10m
         labels:
           severity: warning
         annotations:
-          summary: "High memory on {{ $labels.host }} ({{ $labels.instance }})"
+          summary: "High memory on {{ $labels.host }} ({{ $value | printf \"%.1f\" }}%)"
+          description: "Sustained above 90% of MemTotal for 10 minutes, counting MemAvailable rather than MemFree so page cache does not read as used memory. It is deliberately late: see NodeMemoryThrashing and OomKillDetected for the window in which the machine is still recovering but already thrashing."
 
       - alert: FilesystemAlmostFull
         expr: (1 - node_filesystem_avail_bytes{job="node", fstype!~"tmpfs|overlay|cgroup.*|proc|sysfs|devpts|fuse.*|squashfs|autofs"} / node_filesystem_size_bytes{job="node", fstype!~"tmpfs|overlay|cgroup.*|proc|sysfs|devpts|fuse.*|squashfs|autofs"}) * 100 >= 95
@@ -66,6 +72,7 @@ groups:
           severity: warning
         annotations:
           summary: "Filesystem almost full on {{ $labels.mountpoint }} ({{ $labels.host }})"
+          description: "Under 5% of the filesystem is free. Pseudo and network filesystems are excluded because their reported size is meaningless, so this only fires on real ones."
 
       - alert: DiskFillPredicted
         expr: predict_linear(node_filesystem_avail_bytes{job="node", fstype!~"tmpfs|overlay|cgroup.*|proc|sysfs|devpts|fuse.*|squashfs|autofs"}[6h], 24*3600) < 0
@@ -74,6 +81,7 @@ groups:
           severity: warning
         annotations:
           summary: "Disk {{ $labels.mountpoint }} on {{ $labels.host }} will fill within 24h"
+          description: "Straight-line extrapolation of the last 6 hours of free space, projected 24 hours forward, crosses zero. It buys a day of notice instead of an outage, and a full root also removes the space the page cache needs to write into, which feeds straight back into the memory-pressure alerts."
 
       - alert: DiskBusy
         expr: rate(node_disk_io_time_seconds_total{job="node", device!~"^(loop|ram|fd)[0-9]*$"}[5m]) > 0.95
@@ -84,8 +92,60 @@ groups:
           summary: "Disk {{ $labels.device }} on {{ $labels.host }} is over 95% busy"
           description: "Sustained saturation for 10 minutes. A failing drive re-reading the same bad blocks looks exactly like this, and a spinning disk at 100% is one of the symptoms of the freeze."
 
+      - alert: NodeMemoryThrashing
+        expr: rate(node_pressure_memory_stalled_seconds_total{job="node"}[5m]) > 0.2
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Memory thrashing on {{ $labels.host }}"
+          description: "PSI memory 'full' above 20% for 5 minutes: every non-idle task on the machine was stalled on memory at the same time, which the kernel documentation defines as thrashing. This is the earliest reliable signal that the desktop is about to stop responding, and it fires long before MemAvailable crosses the threshold HighMemoryUsage watches. Inert on kernels without CONFIG_PSI, where the pressure collector emits no series."
+
+      - alert: NodeIoStalled
+        expr: rate(node_pressure_io_stalled_seconds_total{job="node"}[5m]) > 0.2
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "IO stalled on {{ $labels.host }}"
+          description: "PSI io 'full' above 20% for 5 minutes: the whole runnable set is queued behind the storage stack. This is the alternative explanation for a machine that is completely unresponsive with plenty of free RAM, and it is the usual second half of a memory episode, because reclaim forces the working set to be re-read from the same disk."
+
+      - alert: OomKillDetected
+        expr: increase(node_vmstat_oom_kill{job="node"}[15m]) > 0
+        labels:
+          severity: critical
+        annotations:
+          summary: "OOM killer fired on {{ $labels.host }}"
+          description: "The kernel OOM killer ran at least once in the last 15 minutes, so a process was sacrificed to memory exhaustion. This is the single most decisive evidence for the hypothesis that these freezes are caused by memory pressure: the kernel itself decided the machine was out of memory and killed something. The counter is read with increase() because node_vmstat_oom_kill is semantically monotonic even though node_exporter exports it untyped, and it resets on reboot, so delta() across a restart would invent a negative count and increase() extrapolates correctly out of a reboot."
+
+      - alert: SwapThrashing
+        expr: node_memory_SwapTotal_bytes{job="node"} > 0 and rate(node_vmstat_pgmajfault{job="node"}[5m]) > 500
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Swap thrashing on {{ $labels.host }}"
+          description: "More than 500 major page faults per second for 5 minutes while swap is configured. A major fault had to be served by reading from storage instead of from the page cache, so sustained major faults mean the kernel is evicting and re-reading the working set faster than memory can hold it, which is the paging side of the same failure NodeMemoryThrashing measures directly. Automatically inert on a machine with no swap configured, which is the more dangerous case: there the kernel has no absorber at all and the next large allocation goes straight to the OOM killer."
+
+      - alert: KernelHungTaskDetected
+        expr: increase(node_kernel_hung_tasks_total{job="node"}[15m]) > 0
+        labels:
+          severity: critical
+        annotations:
+          summary: "Kernel hung task detected on {{ $labels.host }}"
+          description: "The kernel logged a hung-task warning in the last 15 minutes, meaning some task was stuck in uninterruptible sleep longer than the hung-task timeout. This is the kernel's own hard-freeze evidence and the only rule in this family that still explains the case where even a TTY switch does not come back, because on a thrashing machine those tasks are usually blocked behind page reclaim rather than behind a wedged driver. Absent on kernels that do not expose kernel.hung_task_detect_count, where the rule is simply inert."
+
+      - alert: TasksBlockedOnIo
+        expr: max_over_time(node_procs_blocked{job="node"}[5m]) > 0
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Tasks blocked on IO on {{ $labels.host }}"
+          description: "At least one process spent time in uninterruptible sleep on I/O inside every one of the last 5 minutes. Those processes cannot be killed, only waited on, and they are what turns slow storage into an unresponsive desktop. Read with max_over_time() because node_procs_blocked is a gauge of how many tasks are blocked right now and rises and falls; increase() on a gauge would report a meaningless number."
+
       - alert: BatteryLow
-        expr: node_power_supply_capacity{job="node"} < 20
+        expr: min by (host, power_supply) (node_power_supply_capacity{job="node"}) < 20
         for: 5m
         labels:
           severity: warning
@@ -94,22 +154,22 @@ groups:
           description: "{{ $labels.power_supply }} on {{ $labels.host }} has been under 20% for 5 minutes. Only fires on machines that expose a battery; desktops with no battery are inert."
 
       - alert: BatteryHealthDegraded
-        expr: node_power_supply_energy_full / node_power_supply_energy_full_design < 0.70
+        expr: min by (host, power_supply) (node_power_supply_energy_full{job="node"} / node_power_supply_energy_full_design{job="node"} < 0.70 or node_power_supply_charge_full{job="node"} / node_power_supply_charge_full_design{job="node"} < 0.70)
         for: 1h
         labels:
           severity: warning
         annotations:
           summary: "Battery health degraded on {{ $labels.host }} ({{ $value | humanizePercentage }} of design)"
-          description: "Retained capacity {{ $labels.power_supply }} on {{ $labels.host }} is below 70% of design. It fires only when health gets worse, not at normal wear level."
+          description: "Retained capacity {{ $labels.power_supply }} on {{ $labels.host }} is below 70% of design. It fires only when health gets worse, not at normal wear level. The ratio falls back from the energy_* pair to the charge_* pair because an SBS-style battery, such as an Apple internal battery, reports charge_full and charge_full_design and never exports energy_full at all, so without the fallback this alert could never fire on those machines."
 
       - alert: NodeExporterCollectorFailing
-        expr: node_scrape_collector_success{job="node", collector=~"^(boot_time|cpu|diskstats|filesystem|hwmon|loadavg|meminfo|powersupplyclass|swap|systemd|textfile|time|uname)$"} == 0
+        expr: node_scrape_collector_success{job="node", collector=~"^(boot_time|cpu|diskstats|filesystem|hwmon|loadavg|meminfo|powersupplyclass|pressure|swap|systemd|textfile|time|uname|vmstat)$"} == 0
         for: 15m
         labels:
           severity: warning
         annotations:
           summary: "node_exporter collector {{ $labels.collector }} failing on {{ $labels.host }}"
-          description: "A collector that normally works has been failing for 15 minutes, so metrics are silently missing even though the target is up."
+          description: "A collector that normally works has been failing for 15 minutes, so metrics are silently missing even though the target is up. vmstat and pressure are both on the allowlist: they are exactly the collectors the memory, IO and OOM rules depend on, so a silent failure there would leave every one of those alerts with no data and no explanation."
 
   - name: thermal
     rules:
@@ -140,12 +200,12 @@ groups:
           description: "A hardware-level throttle is asserted. This is the GPU protecting itself from heat or power, and it is worth correlating with any freeze."
 
       - alert: HighSystemTemperature
-        expr: max by (instance) (node_hwmon_temp_celsius{job="node"}) > 90
+        expr: max by (host) (node_hwmon_temp_celsius{job="node"}) > 90
         for: 10m
         labels:
           severity: warning
         annotations:
-          summary: "A sensor on {{ $labels.instance }} is at {{ $value }} C"
+          summary: "A sensor on {{ $labels.host }} is at {{ $value }} C"
           description: "Highest of all hwmon sensors: CPU, NVMe or GPU. Sensors that do not report a reading are absent from this metric rather than reported as zero, so this only fires on real readings."
 
   - name: gpu
@@ -175,3 +235,11 @@ groups:
         annotations:
           summary: "Hard freeze recorded on {{ $labels.host }}: heartbeat was interrupted for {{ $value | humanizeDuration }}"
           description: "Latched by the heartbeat and the only hard-freeze evidence that reaches Prometheus, because the box is by definition down while a freeze happens. It survives reboots for 30 days; once you have finished investigating, clear it by removing the file /var/lib/node_exporter/textfile_collector/nvidia_gpu.maxgap"
+
+      - alert: GpuKernelError
+        expr: increase(node_journal_events_total{job="node", source=~"nvrm|drm"}[15m]) > 0
+        labels:
+          severity: warning
+        annotations:
+          summary: "Kernel logged a GPU error on {{ $labels.host }} ({{ $labels.source }})"
+          description: "The kernel journal recorded at least one GPU line in the last 15m: source nvrm is an NVIDIA driver/Xid message, source drm is an amdgpu/drm error, reset or ring timeout. Treat it as a correlation, not a cause: a hard freeze usually wedges the kernel before it logs anything, so this fires on errors that still made it to disk. Check the Kernel/GPU events annotation on the dashboard against the heartbeat gap at the same time."

@@ -1,0 +1,17 @@
+services:
+  onlyoffice:
+    image: onlyoffice/documentserver:latest
+    container_name: onlyoffice
+    hostname: onlyoffice
+    restart: unless-stopped
+    environment:
+      - JWT_ENABLED=true
+      - JWT_SECRET=${ONLYOFFICE_PASSWORD}
+    ports:
+      - 9981:80
+    networks:
+      - cloud-net
+
+networks:
+  cloud-net:
+    external: true

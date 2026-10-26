@@ -1,12 +1,12 @@
 # Monitoring — Prometheus + Alertmanager + Node Exporter
 
-Infrastructure monitoring stack: Prometheus scrapes Node Exporter on the server and on remote devices, keeps up to 90 days of history, and Alertmanager is running but has no notification receiver wired up yet. Grafana reads Prometheus over the shared `monitoring-net` network.
+Infrastructure monitoring stack: Prometheus scrapes Node Exporter on the server and on remote devices, keeps up to 30 days of history, and Alertmanager is running but has no notification receiver wired up yet. Grafana reads Prometheus over the shared `monitoring-net` network.
 
 Every monitored machine — the server included — runs `node_exporter` natively as a systemd service, installed with the [same script](../node-exporter/install-node-exporter.sh). There is deliberately no `node_exporter` container in this stack; see [Why node_exporter is not a container here](#why-node_exporter-is-not-a-container-here).
 
-## Multi-device, one dashboard template
+## Multi-device, one dashboard
 
-The stack is designed for any number of devices, and **the server is just another device**: there is no special `server`/`client` role. Each device contributes one entry to the shared registry `Devices/`, and every dashboard row is decided per device by flags in that entry — so a machine without a battery or GPU does not get empty panels.
+The stack is designed for any number of devices, and **the server is just another device**: there is no special `server`/`client` role. Each device contributes one entry to the shared registry `Devices/`, and Grafana renders a single Infrastructure dashboard whose Host dropdown is fed from these targets — the Battery/GPU sections appear when at least one entry asks for them.
 
 The device registry has two halves:
 
@@ -16,15 +16,15 @@ The device registry has two halves:
 A device entry looks like:
 
 ```env
-DEVICE_NAME="My Laptop"      # title shown in Grafana, and the host label
+DEVICE_NAME="My Laptop"      # the host label, and the name in Grafana's Host dropdown
 DEVICE_ADDR=<ip>:9100              # where Prometheus scrapes node_exporter
-DEVICE_BATTERY=1                   # dashboard includes the Battery row only when set
-DEVICE_GPU=0                       # dashboard includes the NVIDIA row only when set
+DEVICE_BATTERY=1                   # machine has a battery (dashboard section is fleet-wide)
+DEVICE_GPU=0                       # machine has a discrete NVIDIA GPU (same union rule)
 ```
 
-`DEVICE_NAME` becomes the `host` label on that target and the title of that device's dashboard in Grafana. Because it is embedded in a JSON dashboard, the bootstrap only accepts names matching `[A-Za-z0-9 ._-]` and aborts loudly otherwise.
+`DEVICE_NAME` becomes the `host` label on that target and the name Grafana shows in the Host dropdown. The Grafana bootstrap only accepts names matching `[A-Za-z0-9 ._-]` and aborts loudly otherwise.
 
-`DEVICE_BATTERY` and `DEVICE_GPU` control *which rows the dashboard renders*, not how the metrics are collected. Collectors are always the native node_exporter ones plus the optional NVIDIA heartbeat on that host; see [Battery and GPU monitoring](#battery-and-gpu-monitoring).
+`DEVICE_BATTERY` and `DEVICE_GPU` control *whether the dashboard renders those sections*, not how the metrics are collected. Collectors are always the native node_exporter ones plus the optional NVIDIA heartbeat on that host; see [Battery and GPU monitoring](#battery-and-gpu-monitoring).
 
 ## Layout
 
@@ -48,7 +48,7 @@ ${PATH_TO_COMPOSE}/Automatization/
         └── <device>/.env            → /devices/<device>/.env (per-device registry)
 ```
 
-- A one-shot `bootstrap` service (busybox) creates those directories on first start, seeds the default config only when missing (`cp -n`, never overwrites your edits), regenerates `nodes.yml` from the `Devices/` registry and runs `chown -R 65534:65534` on the `data/` directories, so there are **no manual steps** (no `mkdir`, no `chown`, no helper scripts).
+- A one-shot `bootstrap` service (busybox, running `scripts/bootstrap.sh`) creates those directories on first start, seeds the default config only when missing (`cp -n`, never overwrites your edits) by copying the committed templates from the clone's `prometheus/` and `alertmanager/` directories (mounted read-only), regenerates `nodes.yml` from the `Devices/` registry and runs `chown -R 65534:65534` on the `data/` directories, so there are **no manual steps** (no `mkdir`, no `chown`, no helper scripts).
 
 > **The clone on the server.** Because the registry is bind-mounted from `${PATH_TO_COMPOSE}`, the server must keep a read-mostly clone of this repository (unlike the usual "never clone by hand" rule); update it with `git -C "${PATH_TO_COMPOSE}" pull`. Never run `git clean -fdx` or `git push -f` inside it — the live device `.env` files are untracked by design and live there.
 
@@ -91,13 +91,13 @@ A missing or empty `Devices/` registry makes the bootstrap exit with a message p
 2. In the server clone, create `${PATH_TO_COMPOSE}/Automatization/Monitoring/Devices/<name>/.env` from the repository template: `DEVICE_NAME`, `DEVICE_ADDR=<device-address>:9100`, and the battery/GPU flags for that hardware.
 3. Update the stack in Portainer.
 
-Removing a device is deleting its `.env` and updating. Renames are just changing `DEVICE_NAME`; the generated dashboards on the other side of the stack are rebuilt on Update.
+Removing a device is deleting its `.env` and updating. Renames are just changing `DEVICE_NAME`; the Host dropdown in Grafana is rebuilt from these targets on Update.
 
 ## Battery and GPU monitoring
 
-**Battery.** `node_exporter` already abstracts batteries through its native `powersupplyclass` collector reading `/sys/class/power_supply/*`, so no per-device command or textfile script is needed — the same `node_power_supply_*` metrics appear on any machine that has a battery. The only thing per-device is `DEVICE_BATTERY`, which decides whether the dashboard's Battery row is rendered. The alerts are `BatteryLow` (`capacity < 20` for 5m) and `BatteryHealthDegraded` (`energy_full / energy_full_design < 0.70` — it fires only when the retained capacity gets worse, not at today's normal wear level).
+**Battery.** `node_exporter` already abstracts batteries through its native `powersupplyclass` collector reading `/sys/class/power_supply/*`, so no per-device command or textfile script is needed — the same `node_power_supply_*` metrics appear on any machine that has a battery. `DEVICE_BATTERY` is a fleet-wide flag: set it on the machines that have a battery, and the dashboard renders the Battery section once when any of them does. The alerts are `BatteryLow` (`capacity < 20` for 5m) and `BatteryHealthDegraded` (`energy_full / energy_full_design < 0.70` — it fires only when the retained capacity gets worse, not at today's normal wear level).
 
-**GPU.** A discrete NVIDIA GPU has no hwmon, so its temperature, VRAM, power and clocks cannot come from `node_exporter`. They come from the [GPU heartbeat](../node-exporter/README.md), installed automatically on the host. `DEVICE_GPU` only tells the dashboard to render the NVIDIA row. If the row is empty, the heartbeat timer is not running; see [the timer trap](../node-exporter/README.md#why-this-is-not-just-download-node_exporter).
+**GPU.** A discrete NVIDIA GPU has no hwmon, so its temperature, VRAM, power and clocks cannot come from `node_exporter`. They come from the [host heartbeat](../node-exporter/host-heartbeat.md), installed automatically on the host. `DEVICE_GPU` is fleet-wide like above: it tells the dashboard to render the NVIDIA GPU section once. If the section is empty, the selected host's heartbeat timer is not running; see [the timer trap](../node-exporter/README.md#why-this-is-not-just-download-node_exporter).
 
 ## Why node_exporter is not a container here
 
@@ -120,7 +120,7 @@ The test is behavioural, not a status check: stop the suspect and see whether th
 
 ## Retention and storage
 
-Two independent limits are set on the Prometheus service: `retention.time=90d` and `retention.size=20GB`. **Prometheus enforces both and deletes whichever runs out first**, so the size cap is usually the one that decides how much history you actually keep. At the 15s scrape interval, 90 days is about 518k samples per series, and 20GB is roughly 10k–14k series worth of that. `node_exporter` with the `systemd` and `hwmon` collectors is the usual way to blow past that, because every systemd unit contributes several series.
+Two independent limits are set on the Prometheus service: `retention.time=30d` and `retention.size=15GB`. **Prometheus enforces both and deletes whichever runs out first**, so the size cap is usually the one that decides how much history you actually keep. At the 15s scrape interval, 30 days is about 173k samples per series (2,592,000 / 15), and 15GB is roughly 22k–32k series worth of that. `node_exporter` with the `systemd` and `hwmon` collectors is the usual way to blow past that, because every systemd unit contributes several series.
 
 Check the real number before adding targets — Prometheus web UI, **Status → TSDB**, or:
 
@@ -140,13 +140,13 @@ docker kill -s HUP prometheus
 docker kill -s HUP alertmanager
 ```
 
-The bootstrap seeds with `cp -n`, so it never overwrites what you edited. There is no `sync-config.sh` any more; the bootstrap does the seeding on every Update.
+The bootstrap (`scripts/bootstrap.sh`) seeds with `cp -n`, so it never overwrites what you edited. There is no `sync-config.sh` any more; the bootstrap does the seeding on every Update.
 
 ## Alerting status
 
-The bootstrap seeds a **real** rule set, the same 18 rules as `prometheus/rules/alerts.yml` in this repository, so they are active after an Update. The two must be kept in sync: the bootstrap seeds `{tmpl,config}/rules/alerts.yml` only when those files are missing or empty, so if you edit the rules on the server directly, the next Update will not overwrite them — which is convenient, but also means the repo copy silently goes stale.
+The bootstrap copies `prometheus/rules/alerts.yml` from this repository into `{tmpl,config}/rules/alerts.yml`, so the rules are active after an Update from a **single** source of truth: the file used to be duplicated inside `docker-compose.yml` as a hand-maintained twin, and that second copy is gone. The copy only happens when `{tmpl,config}/rules/alerts.yml` is missing or empty, so edits made on the server directly survive an Update — convenient, but then the server copy, not the repo, is what runs until you copy the repo file across and HUP Prometheus.
 
-The rules that matter for a machine that freezes hard are `HostDownBrief` (3 min, warning), `HostDown` (5 min, critical) and `HostRebooted`, plus the `GpuFreezeDetected` latch from the [node_exporter helper](../node-exporter/README.md) on NVIDIA clients. The last one is the only one that records how long the machine was actually dead: during a freeze the box is by definition not answering, so nothing can report the outage while it happens.
+The rules that matter for a machine that freezes hard are `HostDownBrief` (3 min, warning), `HostDown` (5 min, critical) and `HostRebooted`, plus the `GpuFreezeDetected` latch from the [host heartbeat](../node-exporter/host-heartbeat.md) on NVIDIA clients. The last one is the only one that records how long the machine was actually dead: during a freeze the box is by definition not answering, so nothing can report the outage while it happens.
 
 Alertmanager's default receiver still has **no destination**, so nothing is delivered anywhere. The rules evaluate and show up in Prometheus and Grafana; wiring Telegram is a separate, deliberate step.
 
@@ -159,7 +159,7 @@ Alertmanager's default receiver still has **no destination**, so nothing is deli
 | A device target is `down` | `node_exporter` not installed there, or something blocks `9100/tcp` | Install it on the device, confirm `DEVICE_ADDR` in its device entry, then work through the firewall section above |
 | A target is `down` and every firewall service reads `inactive` | An application firewall is filtering per process, not per port | Stop the suspect and see whether the target recovers; see [Firewalls](#firewalls-and-why-my-firewall-is-off-is-not-evidence) |
 | Only one network interface appears on the server | `node_exporter` is containerised, so it is reading its own netns | Install it natively with the helper script; see [Why node_exporter is not a container here](#why-node_exporter-is-not-a-container-here) |
-| The GPU row is empty but other panels have data | The GPU heartbeat timer is not firing | `systemctl list-timers nvidia-gpu-heartbeat.timer` must show a `NEXT`; see the helper README |
+| The GPU section is empty but other panels have data | The host heartbeat timer is not firing | `systemctl list-timers host-heartbeat.timer` must show a `NEXT`; see the helper README |
 | A target is `up` but its dashboard is empty | The target has no `host` label | Make sure its device entry has `DEVICE_NAME` set, and Update |
 | A panel is empty while its legend shows values | The series exists and is flat at zero — usually an idle machine, not a bug | Confirm with `rate(node_disk_read_bytes_total{host="<name>"}[5m])`; if it returns no series at all, check `node_scrape_collector_success` for that collector |
 | Edited `nodes.yml` by hand and "nothing changed" | It is regenerated from `Devices/` on every Update | Edit the device `.env` file, not the file |

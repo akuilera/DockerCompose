@@ -1,0 +1,34 @@
+[Unit]
+Description=Probe every configured peer every 60s
+Documentation=man:systemd.timer(5)
+
+[Timer]
+# OnUnitActiveSec alone is NOT a schedule. It is relative to the previous
+# activation of the unit, and on a freshly booted machine there is no previous
+# activation: systemd has no reference point, schedules nothing, and the timer
+# then reports "active" while doing nothing forever. OnActiveSec anchors the
+# first run to the timer's own start, which is what actually gets it going.
+#
+# Both belong together. OnUnitActiveSec then paces the following runs so a slow
+# probe delays the next one instead of stacking on top of it.
+OnActiveSec=60s
+OnUnitActiveSec=60s
+# 5s on a 60s interval is already tighter than any recording you care about: the
+# down window is recorded to the second from when the first probe failed, and the
+# accuracy setting only affects when within the interval the probe happens. The
+# sibling heartbeat uses 1s because its interval is 15s; here the interval is
+# four times larger and the extra jitter buys nothing.
+AccuracySec=5s
+# No Persistent=true: on resume we do not want a burst of catch-up runs, and a
+# catch-up run right after a suspend would record a probe against a network that
+# has not finished coming back.
+Persistent=false
+# No randomisation: this timer exists to catch an intermittent hang, so the
+# probes should be evenly spaced. Randomising them would occasionally place two
+# probes 1s apart and the rest far apart, which is the opposite of what an evenly
+# spaced sampling of a rare event should do.
+RandomizedDelaySec=0
+Unit=peer-watchdog.service
+
+[Install]
+WantedBy=timers.target

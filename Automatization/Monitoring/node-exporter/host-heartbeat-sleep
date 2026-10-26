@@ -1,0 +1,150 @@
+#!/usr/bin/env bash
+# =============================================================================
+# systemd-sleep hook that records suspend transitions for the host heartbeat.
+#
+# Installed as /usr/lib/systemd/system-sleep/host-heartbeat-sleep and executed
+# by systemd-suspend.service / systemd-hibernate.service / systemd-sleep as root
+# immediately before and after every sleep transition. Arguments: $1 is "pre" or
+# "post", $2 is suspend|hibernate|hybrid-sleep|suspend-then-hibernate, and
+# SYSTEMD_SLEEP_ACTION names the leg currently being processed.
+#
+# WHY A HOOK AND NOT A CLOCK COMPARISON
+# It is not possible to tell a suspend from a freeze by comparing clocks from user
+# space, and this is not a shortcut anybody should retry. The first field of
+# /proc/uptime is CLOCK_BOOTTIME, which advances during a deep suspend exactly like
+# CLOCK_REALTIME does, so both sides of a naive comparison advance together and the
+# comparison proves nothing at all. The alternative -- CLOCK_BOOTTIME minus
+# CLOCK_MONOTONIC, which really would isolate the suspended interval -- fails on
+# s2idle, the default suspend mode on modern systemd kernels (255 dropped the
+# SuspendMode= knob entirely), and CLOCK_MONOTONIC is not exposed in /proc anyway.
+# The only portable, trustworthy signal is the sleep hook itself, which is why this
+# file exists and why it is worth its size.
+#
+# HOW THE MARKER IS DESIGNED AROUND suspend-then-hibernate
+# A suspend-then-hibernate operation fires this hook FOUR times (pre suspend, pre
+# hibernate, post hibernate, post suspend). The obvious implementation, "pre
+# writes a marker, post deletes it", is wrong in a way that silently reinstates the
+# bug this hook was written to remove: the inner post hibernate deletes the marker
+# and the outer post suspend deletes it again, so the marker that spanned the
+# combined operation no longer exists and the gap covering the whole thing is
+# classified as a freeze.
+# The design below is deliberately ORDER-INDEPENDENT, which is what makes it immune
+# to that trap and to any ordering systemd might change in a future release:
+#   * pre writes a marker ONLY IF none exists, or the existing one is already
+#     closed. An open marker means "a sleep transition is in progress", so a second
+#     pre -- the inner one -- leaves it alone and the recorded start stays that of
+#     the OUTERMOST operation, which is the interval that actually matters. A closed
+#     marker means the previous sleep has finished and nobody has consumed it yet,
+#     so a new pre replaces it instead of inheriting a stale start epoch.
+#   * post never deletes. It rewrites the marker, keeping the existing start epoch
+#     and setting the end epoch to max(existing end, now). Taking the maximum rather
+#     than overwriting means whichever post runs last still wins, so the marker
+#     ends up spanning the entire nested operation no matter which leg systemd
+#     happens to process first.
+#   * The heartbeat consumes (deletes) the marker when it classifies with it, so a
+#     leftover marker can never be misapplied to a later, unrelated gap.
+# The boot id is stored inside the marker, so a marker that survives a reboot -- the
+# machine was power-cut in the middle of a sleep, so the post hook never ran -- is
+# recognised as stale and ignored, instead of turning the following reboot into a
+# fake "suspend".
+#
+# CONSTRAINTS THIS FILE MUST RESPECT
+# systemd runs every executable in this directory in parallel, does not continue the
+# transition until all of them return, and freezes user.slice while they run. So
+# this script does the least work that still works: read one boot id, ask date for
+# the epoch, write one small file atomically. No network, no nvidia-smi, no
+# blocking call, no lock anyone could be holding. It never exits non-zero either,
+# because a failing hook must not turn into a failed sleep transition. It is safe
+# when the state directory does not exist yet: the mkdir is attempted and a failure
+# is ignored, which leaves the heartbeat to classify the gap as a freeze rather
+# than letting the hook break the suspend.
+#
+# KNOWN LIMITATION, stated rather than hidden
+# Only logind/systemd-mediated sleeps are observed. A sleep requested straight from
+# the embedded controller, or "echo mem > /sys/power/state" written by hand, never
+# runs this hook, so such a gap is classified as a freeze -- a false positive in
+# principle. The alternative, inferring the transition from clocks, is provably
+# wrong as described above, so an occasional false positive is the price of a
+# design that is not simply broken.
+# =============================================================================
+set -uo pipefail
+
+# Resolve the marker path. systemd gives a sleep hook no configuration of its own,
+# so install-node-exporter.sh writes /etc/default/host-heartbeat and that file is
+# the only channel between the installer and this hook. The two keys are read out
+# of it with a whitelist rather than sourced: a sourced file can execute anything,
+# and under `set -u` a single unbound variable inside it would kill this hook in
+# the middle of a suspend. A read is cheaper than the failure mode.
+CONF_FILE="/etc/default/host-heartbeat"
+if [[ ! -r "${CONF_FILE}" ]]; then
+  CONF_FILE=""
+elif [[ -n "${NODE_EXPORTER_STATE_DIR:-}" && -n "${NODE_HOST_SUSPEND_MARKER:-}" ]]; then
+  CONF_FILE=""   # the environment already answered both questions
+fi
+if [[ -n "${CONF_FILE}" ]]; then
+  while read -r _key _value _rest; do
+    _key="${_key#export }"
+    case "${_key}" in
+      NODE_EXPORTER_STATE_DIR|NODE_HOST_SUSPEND_MARKER) printf -v "${_key}" '%s' "${_value}" ;;
+    esac
+  done < "${CONF_FILE}"
+fi
+
+STATE_DIR="${NODE_EXPORTER_STATE_DIR:-/var/lib/node_exporter/textfile_collector}"
+# The heartbeat resolves the same default, so the two agree with no configuration.
+MARKER_FILE="${NODE_HOST_SUSPEND_MARKER:-${STATE_DIR}/.hb_suspend.marker}"
+
+# Integer-only check for the fields read back from the marker. Kept local and
+# trivial on purpose: this runs inside the sleep path.
+is_int() { case "${1:-}" in ''|*[!0-9]*) return 1 ;; *) return 0 ;; esac; }
+
+phase="${1:-}"
+operation="${2:-unknown}"
+
+# Best effort: on a first run the directory may not exist yet, and failing to
+# create it must never abort the sleep transition.
+mkdir -p "${STATE_DIR}" 2>/dev/null || true
+
+boot_id="-"
+if [[ -r /proc/sys/kernel/random/boot_id ]] && read -r boot_id < /proc/sys/kernel/random/boot_id; then
+  [[ -n "${boot_id}" ]] || boot_id="-"
+fi
+
+now="$(date +%s 2>/dev/null)"
+is_int "${now}" || now=0
+
+# The -r test matters: a read whose redirection fails does not merely return
+# non-zero, bash also prints the shell's own "No such file or directory", and that
+# would be printed on the very first suspend of every machine.
+start=0
+end=0
+if [[ -r "${MARKER_FILE}" ]] && read -r _mb _ms _me _mp _mo < "${MARKER_FILE}" && is_int "${_ms:-}" && is_int "${_me:-}"; then
+  start="${_ms}"
+  end="${_me}"
+fi
+
+case "${phase}" in
+  pre)
+    # A missing marker leaves start=0 and end=0. An open marker (end=0 with a real
+    # start) belongs to an outer sleep transition still in progress, so overwriting
+    # it here is exactly the bug that made suspend-then-hibernate look like a
+    # freeze. A closed marker is a finished sleep the heartbeat has not looked at,
+    # so a new sleep starts a fresh record rather than inheriting a stale start.
+    if [[ "${start}" -eq 0 || "${end}" -gt 0 ]]; then
+      printf '%s %s %s %s %s\n' "${boot_id}" "${now}" "0" "pre" "${operation}" \
+        > "${MARKER_FILE}.tmp" 2>/dev/null && mv -f "${MARKER_FILE}.tmp" "${MARKER_FILE}" 2>/dev/null
+    fi
+    ;;
+  post)
+    # Never rm -f here; see the suspend-then-hibernate note above. The start epoch
+    # is preserved and the end epoch only ever moves forward, so the outer post wins.
+    [[ "${now}" -gt "${end}" ]] && end="${now}"
+    printf '%s %s %s %s %s\n' "${boot_id}" "${start}" "${end}" "post" "${operation}" \
+      > "${MARKER_FILE}.tmp" 2>/dev/null && mv -f "${MARKER_FILE}.tmp" "${MARKER_FILE}" 2>/dev/null
+    ;;
+  *)
+    # Unknown phase: do nothing. A sleep hook that complains is only journal noise.
+    ;;
+esac
+
+exit 0

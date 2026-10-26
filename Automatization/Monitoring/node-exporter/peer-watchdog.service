@@ -1,0 +1,53 @@
+[Unit]
+Description=Peer reachability watchdog for the node_exporter textfile collector
+Documentation=man:systemd.service(5)
+# Probing remote exporters needs a network, and a run started before the network
+# is up records every peer as down and opens a down window for each of them. The
+# window closes on the next run, but it would put a fabricated outage at the very
+# front of the 30-day history, which is exactly the kind of false first record
+# that makes people stop trusting the file.
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+# Runs as the node_exporter account, not root. Everything this script writes is
+# the textfile directory and its own state directory, and the installer creates
+# both owned by this account, so root would be a privilege with no use: a script
+# that makes outbound HTTP requests to whatever is on the network should not be
+# root on the machine that has to keep working.
+User=node_exporter
+Group=node_exporter
+ExecStart=/usr/local/bin/peer-watchdog
+# The worst case for one run is ceil(peers / concurrency) * probe_timeout, because
+# that is the number of sequential waves the concurrency pool needs. With the
+# shipped defaults (8 concurrent probes, 5s timeout) that stays under 5s for up
+# to 8 peers, under 10s for up to 16, and under the 60s timer interval for up to
+# about 96 peers. Past that, raise PEER_WATCHDOG_CONCURRENCY rather than this
+# value: a timeout longer than the timer interval means a run can still be in
+# flight when the next tick arrives.
+TimeoutStartSec=120
+# Hardening mirrors the sibling heartbeat units. ProtectSystem=strict (rather than
+# =full) makes the whole filesystem read-only except the two directories below, so
+# a bug in this script cannot damage the observing machine -- the one machine
+# whose job is to keep telling you about everyone else's failures.
+#
+# ReadWritePaths is why this unit carries the paths at all: the watchdog writes
+# into the textfile collector directory AND into its own state directory (state,
+# history, per-run scratch), and neither is under a home or a tmpfs. The installer
+# regenerates these two values in a drop-in from the same variables it writes into
+# the environment drop-in, so changing a path in only one of the two places is not
+# possible by accident; if you override a path by hand, override it by re-running
+# the installer.
+ProtectSystem=strict
+ReadWritePaths=/var/lib/node_exporter/textfile_collector /var/lib/peer-watchdog
+NoNewPrivileges=true
+PrivateTmp=true
+# The scratch directory for probe results is created under the state directory,
+# not /tmp, because PrivateTmp gives this unit a private /tmp anyway and one
+# directory means one cleanup path.
+ProtectHome=true
+ProtectKernelTunables=true
+RestrictSUIDSGID=true
+RestrictRealtime=true
+LockPersonality=true

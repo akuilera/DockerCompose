@@ -1,164 +1,74 @@
-# node_exporter + NVIDIA GPU heartbeat
+# node_exporter + host heartbeat + peer watchdog
 
-Installs a native `node_exporter` on a Linux client, plus an optional GPU
-heartbeat that runs every few seconds on a timer. Generic on purpose: it works
-on any systemd Linux and every setting is an environment variable, so the same
-folder deploys to every client of the monitoring stack.
+This folder deploys three separate subsystems to a Linux client of the monitoring stack, and only the first one is the obvious one:
 
-The server side is the [Prometheus stack](../Prometheus/README.md). The host
-running that stack installs `node_exporter` with this same script, so every
-machine in the stack is monitored the same way, from a native service. See
-[Why every machine runs this natively](#why-every-machine-runs-this-natively)
-for why the obvious container approach cannot see the most useful values.
+| Subsystem | What it is | Documentation |
+|---|---|---|
+| `node_exporter` | the native host exporter Prometheus scrapes on `9100/tcp` | this file |
+| host heartbeat | a local timer that classifies freezes, plus its optional NVIDIA GPU and journal-correlation sections | [host-heartbeat.md](host-heartbeat.md) |
+| peer watchdog | an independent witness that records the downtime of the other machines from an always-on host | [peer-watchdog.md](peer-watchdog.md) |
+
+Generic on purpose: it works on any systemd Linux and every setting is an environment variable, so the same folder deploys to every client of the monitoring stack.
+
+The server side is the [Prometheus stack](../Prometheus/README.md). The host running that stack installs `node_exporter` with this same script, so every machine in the stack is monitored the same way, from a native service. See [Why every machine runs this natively](#why-every-machine-runs-this-natively) for why the obvious container approach cannot see the most useful values.
 
 ## Why this is not just "download node_exporter"
 
-Three things here exist because the obvious version of each one is wrong in a
-way that is invisible until you need it.
+Three things here exist because the obvious version of each one is wrong in a way that is invisible until you need it.
 
-**btrfs is not excluded.** Most hardening examples add `btrfs` to
-`--collector.filesystem.fs-types-exclude`. On a btrfs root that silently removes
-`/` from every filesystem metric, so `FilesystemAlmostFull` and
-`DiskFillPredicted` never fire and the panels quietly show nothing. The disk
-fills up and nothing says so.
+**btrfs is not excluded.** Most hardening examples add `btrfs` to `--collector.filesystem.fs-types-exclude`. On a btrfs root that silently removes `/` from every filesystem metric, so `FilesystemAlmostFull` and `DiskFillPredicted` never fire and the panels quietly show nothing. The disk fills up and nothing says so.
 
-**`/run` is not excluded wholesale.** Removable disks mount under
-`/run/media/<user>/<label>`, so excluding all of `/run` hides every external
-drive. `/run` itself is tmpfs, which the fstype filter already removes, so there
-is nothing to gain by excluding the path.
+**`/run` is not excluded wholesale.** Removable disks mount under `/run/media/<user>/<label>`, so excluding all of `/run` hides every external drive. `/run` itself is tmpfs, which the fstype filter already removes, so there is nothing to gain by excluding the path.
 
-**The heartbeat exists because a scrape cannot see a freeze.** When the machine
-locks up, Prometheus stops getting scrapes. When the machine comes back, the
-local timestamps are fresh again. The gap never appears in any time series, so
-`up == 0` is the only trace, and it cannot tell you how long the box was dead
-or whether it rebooted. The heartbeat writes a file locally on a timer; if the
-timer stops, nothing updates the file, and the worst gap is **latched to disk**
-and exported as a metric. That latch is the only hard-freeze evidence that can
-reach Prometheus, because by definition the box is down while a freeze is
-happening. The same file is logged to journald, so the record also survives on
-the machine itself.
+**The heartbeat exists because a scrape cannot see a freeze.** When the machine locks up, Prometheus stops getting scrapes. When the machine comes back, the local timestamps are fresh again. The gap never appears in any time series, so `up == 0` is the only trace, and it cannot tell you how long the box was dead or whether it rebooted. The heartbeat writes a file locally on a timer; if the timer stops, nothing updates the file, and the worst gap is **latched to disk** and exported as a metric. That latch is the only hard-freeze evidence that can reach Prometheus, because by definition the box is down while a freeze is happening. The same file is logged to journald, so the record also survives on the machine itself. The full design, including how each gap is classified as a freeze, a suspend, a reboot or a clock step, is in [host-heartbeat.md](host-heartbeat.md).
 
-**`OnUnitActiveSec` alone is not a schedule.** A timer that only says
-`OnUnitActiveSec=15s` never fires on a fresh boot. That setting is relative to
-the *previous activation* of the unit, and on a machine that has just started
-there is no previous activation, so systemd has no reference point and schedules
-nothing. The unit also needs `OnActiveSec=15s` to fire the first run a fixed
-time after the timer itself started. Both belong together, and a drop-in that
-overrides only one of them does not fix the other.
+**`OnUnitActiveSec` alone is not a schedule.** A timer that only says `OnUnitActiveSec=15s` never fires on a fresh boot. That setting is relative to the *previous activation* of the unit, and on a machine that has just started there is no previous activation, so systemd has no reference point and schedules nothing. The unit also needs `OnActiveSec=15s` to fire the first run a fixed time after the timer itself started. Both belong together, and a drop-in that overrides only one of them does not fix the other. The same trap sits under the heartbeat timer and the peer-watchdog timer.
 
 ## Why every machine runs this natively
 
-The obvious way to monitor a host from a Docker stack is a `node_exporter`
-container. It works for CPU, memory, filesystem usage and systemd unit state, and
-it is what this stack used to do for the server. It cannot see the host's
-**network interfaces**, and that is not a configuration mistake.
+The obvious way to monitor a host from a Docker stack is a `node_exporter` container. It works for CPU, memory, filesystem usage and systemd unit state, and it is what this stack used to do for the server. It cannot see the host's **network interfaces**, and that is not a configuration mistake.
 
-`/proc/net/dev` is not a file that belongs to a mount. It is generated by the
-**network namespace** of whichever process reads it. A container has its own
-network namespace, so reading the host's `/proc` from inside it still returns the
-*container's* interface table — the bridge interface, usually `eth0`, plus `lo`.
-Mounting the host's `/sys` and `/proc` in changes nothing, and the result is a
-confusing contradiction: `ls /host/sys/class/net` lists every host interface
-while the collector reports exactly one. "The mount looks right, so why is it
-still wrong" is the characteristic dead end here.
+`/proc/net/dev` is not a file that belongs to a mount. It is generated by the **network namespace** of whichever process reads it. A container has its own network namespace, so reading the host's `/proc` from inside it still returns the *container's* interface table — the bridge interface, usually `eth0`, plus `lo`. Mounting the host's `/sys` and `/proc` in changes nothing, and the result is a confusing contradiction: `ls /host/sys/class/net` lists every host interface while the collector reports exactly one. "The mount looks right, so why is it still wrong" is the characteristic dead end here.
 
 There are only two ways to read the host's real interfaces:
 
 1. run the container in the host's network namespace (`network_mode: host`), or
 2. run the exporter on the host.
 
-Option 1 works, but it is not the safer of the two. A container that needs host
-visibility is normally granted it with a `-v /:/host` bind, which gives it
-**read access to the entire host filesystem**; and host networking publishes the
-exporter's port on every host interface rather than one. A native service needs
-neither. It already *is* the host, it sees the real interfaces, the real sensor
-chips and the real block devices, and it exposes nothing the container did not.
+Option 1 works, but it is not the safer of the two. A container that needs host visibility is normally granted it with a `-v /:/host` bind, which gives it **read access to the entire host filesystem**; and host networking publishes the exporter's port on every host interface rather than one. A native service needs neither. It already *is* the host, it sees the real interfaces, the real sensor chips and the real block devices, and it exposes nothing the container did not.
 
-The cost is one extra install step on the server plus a registered device entry
-pointing at the server instead of at a container name. That is the trade this
-stack made deliberately.
+The cost is one extra install step on the server plus a registered device entry pointing at the server instead of at a container name. That is the trade this stack made deliberately.
 
-## The GPU is not in the temperature panel
+## Requirements
 
-A discrete NVIDIA GPU normally does not appear in `node_hwmon_temp_celsius` at
-all. On a laptop with both an NVIDIA and an integrated AMD GPU, the hwmon chips
-that do appear belong to the rest of the platform: the AMD SoC, the AMD iGPU,
-the NVMe drive, the WiFi card and the PCI host bridges. `nvidia-smi` is a
-separate interface to the driver, and it is the only source of GPU temperature,
-utilisation, VRAM, power draw, clocks and throttle reasons.
+- systemd, `curl`, `tar`, `awk`, `logger` (`util-linux`), `sha256sum` (`coreutils`)
+- root, to install the binary, the units and the exporter's own service account
+- port 9100 reachable from the Prometheus server
+- the host heartbeat needs nothing beyond systemd: it is installed unconditionally by the same script, its journal section uses `journalctl` when present, and its sleep hook installs into `/usr/lib/systemd/system-sleep`
+- for the optional GPU section of the heartbeat only: `nvidia-smi` on `PATH` and a working proprietary driver. It is auto-detected, so a machine without one reports `node_gpu_present 0` and installs nothing extra
 
-So a temperature panel that looks complete can still be telling you nothing about
-the GPU most likely to overheat. Two consequences:
-
-- `--collector.hwmon.chip-include` is useless here. It filters on hardware IDs,
-  and the NVIDIA's ID is not in that list to begin with.
-- Any alert about a hot or throttling GPU has to be built on the heartbeat
-  metrics, never on `node_hwmon_*`.
-
-### Sensor names in the panels
-
-`node_hwmon_temp_celsius` labels come from the kernel, so they are not
-self-explanatory. On a typical AMD + NVIDIA laptop:
-
-| Chip label | What it actually is |
-|---|---|
-| `k10temp` | the AMD SoC: CPU package plus uncore sensors |
-| `amdgpu` | the integrated AMD GPU |
-| `nvme` | the NVMe drive, one series per temperature sensor |
-| `ath10k_hwmon` | the WiFi card |
-| `pci0000:00_0000:00:18_3` | some other PCI device, named by bus address |
-
-That last form is the one to be careful with: it is a PCI BDF address, not a
-product name, and different hardware puts different things there. It is not a GPU
-unless the address matches your GPU's `lspci` line. Identify one before trusting
-it:
+## Install
 
 ```bash
-lspci -s 00:18.3                    # what is this chip, really?
-lspci -nn | grep -iE 'vga|3d|display'   # which GPUs exist at all?
-nvidia-smi --query-gpu=temperature.gpu --format=csv,noheader
+sudo ./install-node-exporter.sh
 ```
 
-The `Temperature` panel in the Grafana dashboards hides the `pci0000:*` chips for
-exactly this reason: they are unidentified, on some machines they are the hottest
-reading on the panel, and showing an unlabelled BDF next to real sensor names
-invites reading it as something it is not.
+The installer downloads `node_exporter`, verifies the checksum, creates the `node_exporter` service account, installs the units, opens the port in whichever packet-filtering service is actually active, starts everything, and then **verifies the result**: it scrapes the exporter, counts the metrics, and checks that each important metric family is present. It specifically checks that `mountpoint="/"` is reported, because that is the btrfs exclusion bug above, and it tells you the fstype it found. The same run also installs the host heartbeat and its timer; see [host-heartbeat.md](host-heartbeat.md) for what it writes and how to read it. Where no filtering service is found the installer says so plainly and points at [the firewall section](#firewalls-what-the-installer-can-and-cannot-tell-you) rather than claiming the port is open, because a script on the machine cannot know whether the port is reachable.
 
-## Hosts without an NVIDIA GPU
-
-The heartbeat is installed only when `nvidia-smi` is on `PATH`. A machine without
-one gets `node_exporter` alone: no timer, no service, no dead entries in
-`systemctl list-timers` and no `MISSING GPU heartbeat` line in the installer
-output. That is the normal case for a server.
-
-Set `GPU_HEARTBEAT_ENABLE=0` to suppress it on a machine that does have the
-driver but not the intent, or `GPU_HEARTBEAT_ENABLE=1` to force it on.
+To change anything, copy `.env.example` to `.env` and edit that first. `.env` is gitignored and is the only place a real value belongs. The peer watchdog has its own settings file and installer; see [peer-watchdog.md](peer-watchdog.md).
 
 ## Firewalls: what the installer can and cannot tell you
 
-The installer opens `9100/tcp` in `firewalld` or `ufw` when one of them is
-actually running, on a best-effort basis. When it finishes it does **not** claim
-the port is reachable, because a local script cannot know that. Two different
-things keep a target down after an otherwise successful install.
+The installer opens `9100/tcp` in `firewalld` or `ufw` when one of them is actually running, on a best-effort basis. When it finishes it does **not** claim the port is reachable, because a local script cannot know that. Two different things keep a target down after an otherwise successful install.
 
-**A packet-filtering service on the client.** These are what the installer looks
-for: `firewalld`, `ufw`, `nftables`, `iptables`, `pf`. If one is active and the
-port is not open, that is your answer.
+**A packet-filtering service on the client.** These are what the installer looks for: `firewalld`, `ufw`, `nftables`, `iptables`, `pf`. If one is active and the port is not open, that is your answer.
 
-**An application firewall or network monitor.** These are what break the "check
-my firewall" habit, because they are invisible from the usual places:
+**An application firewall or network monitor.** These are what break the "check my firewall" habit, because they are invisible from the usual places:
 
-- **Portmaster** (Safing) describes itself as an *application firewall*. It runs
-  as a root service and filters through `nfqueue`, so it is filtering traffic
-  while every conventional firewall service reports `inactive`. Blocking
-  incoming connections is its **default**, a product decision rather than a
-  misconfiguration.
-- Comparable tools ship under many names — network monitor, privacy suite,
-  internet lock — and share the property that matters here: the filtering is
-  **per application**, and the service name does not hint at it.
+- **Portmaster** (Safing) describes itself as an *application firewall*. It runs as a root service and filters through `nfqueue`, so it is filtering traffic while every conventional firewall service reports `inactive`. Blocking incoming connections is its **default**, a product decision rather than a misconfiguration.
+- Comparable tools ship under many names — network monitor, privacy suite, internet lock — and share the property that matters here: the filtering is **per application**, and the service name does not hint at it.
 
-What distinguishes them is not `systemctl status`, it is behaviour. Stop the
-suspect and see whether the target comes up:
+What distinguishes them is not `systemctl status`, it is behaviour. Stop the suspect and see whether the target comes up:
 
 ```bash
 # 1. what is running, and is anything listening at all?
@@ -170,106 +80,13 @@ sudo systemctl stop portmaster      # name varies; use the one you have
 curl -s --max-time 5 http://<this-host>:9100/metrics | head -1
 ```
 
-If step 2 is what makes the difference, the blocker filters by **process**, and
-the fix belongs to the `node_exporter` profile rather than to a global inbound
-rule: allow the port for that one application and leave the global inbound policy
-alone. "Block incoming connections" globally is the setting these tools all ship
-enabled, and disabling it globally is how a host ends up silently open.
+If step 2 is what makes the difference, the blocker filters by **process**, and the fix belongs to the `node_exporter` profile rather than to a global inbound rule: allow the port for that one application and leave the global inbound policy alone. "Block incoming connections" globally is the setting these tools all ship enabled, and disabling it globally is how a host ends up silently open.
 
-If step 2 changes nothing, the block is upstream of the client: a router, a
-hypervisor security group, or a firewall on the machine running Prometheus. Note
-that the Prometheus container publishes no ports, so curling the Prometheus host
-from your workstation does not test anything relevant — the scrape happens
-container-to-exporter, and the exporter is what has to be reachable.
-
-## Requirements
-
-- systemd, `curl`, `tar`, `awk`, `logger` (`util-linux`), `sha256sum` (`coreutils`)
-- root, to install the binary, the units and the exporter's own service account
-- port 9100 reachable from the Prometheus server
-- for the GPU part only: `nvidia-smi` on `PATH` and a working proprietary driver.
-  The heartbeat is auto-detected, so on a machine without one it is simply not
-  installed; `GPU_HEARTBEAT_ENABLE=0` forces it off and `=1` forces it on.
-
-## Install
-
-```bash
-sudo ./install-node-exporter.sh
-```
-
-The installer downloads, verifies the checksum, creates the `node_exporter`
-service account, installs the units, opens the port in whichever packet-filtering
-service is actually active, starts everything, and then **verifies the result**:
-it scrapes the exporter, counts the metrics, and checks that each important metric
-family is present. It specifically checks that `mountpoint="/"` is reported,
-because that is the btrfs exclusion bug above, and it tells you the fstype it
-found. Where no filtering service is found it says so plainly and points at
-[the firewall section](#firewalls-what-the-installer-can-and-cannot-tell-you)
-rather than claiming the port is open, because a script on the machine cannot know
-whether the port is reachable.
-
-To change anything, copy `.env.example` to `.env` and edit that first. `.env` is
-gitignored and is the only place a real value belongs.
-
-## What the heartbeat exposes
-
-Written to a textfile that `node_exporter` picks up, so the metrics carry the
-same `job`, `instance` and `host` labels as everything else and can be joined
-with it.
-
-| Metric | Meaning |
-|---|---|
-| `node_gpu_present` | 1 if `nvidia-smi` is there at all |
-| `node_gpu_query_success` | 1 if the last query succeeded, 0 if it timed out or failed |
-| `node_gpu_query_duration_seconds` | how long the query took, useful as a leading indicator |
-| `node_gpu_last_query_timestamp_seconds` | when the heartbeat last refreshed the file |
-| `node_gpu_heartbeat_gap_seconds` | seconds since the previous run; above the threshold the box was not running this script |
-| `node_gpu_heartbeat_max_gap_seconds` | **latched** worst gap, the hard-freeze evidence |
-| `node_gpu_heartbeat_max_gap_timestamp_seconds` | when that worst gap happened, or 0 |
-| `node_gpu_temperature_celsius` | core temperature |
-| `node_gpu_utilization_percent` | busy percentage |
-| `node_gpu_memory_used_bytes` / `_total_bytes` | in **bytes**, converted from the MiB `nvidia-smi` reports |
-| `node_gpu_power_draw_watts` / `node_gpu_power_max_limit_watts` | draw and cap |
-| `node_gpu_clocks_sm_mhz` / `node_gpu_clocks_mem_mhz` | core and memory clock |
-| `node_gpu_pcie_link_gen_current` / `_width_current` | negotiated PCIe link, for "is it running at x1 again" |
-| `node_gpu_pstate_info` | power state as a label (`P0`..`P8`) |
-| `node_gpu_clocks_event_reasons_active` | throttle bitmask |
-| `node_gpu_throttle_reason_active` | one series per reason, 1 while asserted |
-
-Deliberate omissions, each verified against a real driver:
-
-- `power.limit` is not used. It returns `[N/A]` on some laptop drivers even when
-  the limit is perfectly readable, so `power.max_limit` is used instead.
-- `temperature.memory` is not used; most laptop drivers report `[N/A]`.
-- `clocks_throttle_reasons.display_clock_setting` is not used; `nvidia-smi`
-  rejects the **entire** query if one field is unknown, which is why the field
-  lists here are short and tested rather than exhaustive.
-- No `--collector.hwmon.chip-include` filter. It matches hardware IDs, not
-  friendly names, so a filter that works on one machine silently matches nothing
-  on the next. Use the max across sensors in the panel instead.
-- A value the driver does not report produces **no metric at all**, not a zero.
-  A rule can then never act on a value that was never measured.
-
-## The state files
-
-Three small files live next to the metrics, none with a `.prom` extension so the
-textfile collector ignores them:
-
-| File | Purpose |
-|---|---|
-| `nvidia_gpu.prom` | the metrics, replaced atomically every run |
-| `nvidia_gpu.lastrun` | epoch of the previous run, for the gap calculation |
-| `nvidia_gpu.maxgap` | the latched worst gap and when it happened |
-
-`nvidia_gpu.maxgap` ages out after 30 days (`GPU_HEARTBEAT_MAX_GAP_TTL`, written into the service drop-in by the installer) so a single freeze does not nag forever. To clear it after you have finished investigating a freeze, remove that file and restart the timer.
+If step 2 changes nothing, the block is upstream of the client: a router, a hypervisor security group, or a firewall on the machine running Prometheus. Note that the Prometheus container publishes no ports, so curling the Prometheus host from your workstation does not test anything relevant — the scrape happens container-to-exporter, and the exporter is what has to be reachable.
 
 ## Finishing the setup
 
-The installer prints the `Devices/` file to create. In the server clone, create
-one registry entry per machine under
-`${PATH_TO_COMPOSE}/Automatization/Monitoring/Devices/<device>/.env`, following
-the template in [../Devices.example/example/.env.example](../Devices.example/example/.env.example),
-then Update the [Prometheus stack](../Prometheus/README.md):
+The installer prints the `Devices/` file to create. In the server clone, create one registry entry per machine under `${PATH_TO_COMPOSE}/Automatization/Monitoring/Devices/<device>/.env`, following the template in [../Devices.example/example/.env.example](../Devices.example/example/.env.example), then Update the [Prometheus stack](../Prometheus/README.md):
 
 ```
 DEVICE_NAME="<device display name>"
@@ -278,29 +95,27 @@ DEVICE_BATTERY=0      # set 1 if this machine has a battery
 DEVICE_GPU=0          # set 1 if this machine has a discrete NVIDIA GPU
 ```
 
-The server is a device like any other now: the host running the stack installs
-this script too, so there is no container name to point at.
+The server is a device like any other now: the host running the stack installs this script too, so there is no container name to point at.
 
-`DEVICE_NAME` sets `labels.host`, and the Grafana dashboards filter on it, so a
-target registered without it scrapes fine and renders as `No data`. Do not edit
-`targets/nodes.yml` on the server; it is regenerated from the `Devices/` registry
-on every stack start.
+`DEVICE_NAME` sets `labels.host`, and the Grafana dashboards filter on it, so a target registered without it scrapes fine and renders as `No data`. Do not edit `targets/nodes.yml` on the server; it is regenerated from the `Devices/` registry on every stack start.
 
-The rules that consume these metrics are in
-[../Prometheus/prometheus/rules/alerts.yml](../Prometheus/prometheus/rules/alerts.yml).
+The rules that consume these metrics are in [../Prometheus/prometheus/rules/alerts.yml](../Prometheus/prometheus/rules/alerts.yml).
+
+## The host heartbeat and the peer watchdog
+
+The heartbeat, its GPU metrics, its journal correlation and the sensor-name mapping that explains the temperature panel are all in [host-heartbeat.md](host-heartbeat.md). The peer watchdog is in [peer-watchdog.md](peer-watchdog.md). The anchors kept below exist only so links written against the old single-file README still resolve; the content they used to name now lives in those two files.
+
+<a name="the-gpu-is-not-in-the-temperature-panel"></a>
+<a name="sensor-names-in-the-panels"></a>
+<a name="hosts-without-an-nvidia-gpu"></a>
+<a name="what-the-heartbeat-exposes"></a>
+<a name="the-state-files"></a>
 
 ## Troubleshooting
 
 ```bash
 # is it up?
-systemctl status node-exporter nvidia-gpu-heartbeat.timer
-
-# what does it think happened?
-journalctl -u nvidia-gpu-heartbeat.service -n 50 --no-pager
-journalctl -t nvidia-gpu-heartbeat --no-pager      # gap warnings only
-
-# look at the heartbeat output directly
-cat /var/lib/node_exporter/textfile_collector/nvidia_gpu.prom
+systemctl status node-exporter
 
 # check the exporter's own view of its collectors
 curl -s localhost:9100/metrics | grep node_scrape_collector_success
@@ -308,34 +123,18 @@ curl -s localhost:9100/metrics | grep node_scrape_collector_success
 
 A few things that look like bugs and are not:
 
-- **`node_scrape_collector_success{collector="rapl"} == 0`** and similar. Those
-  collectors are absent on most hardware and report 0 by design. The alerting
-  rule is scoped to an allowlist of collectors that should always work.
-- **No `node_hwmon_*` for a chip you can read with `sensors`.** The hwmon
-  collector needs permission to the chip; check the exporter's own error above.
-  If the chip in question is the NVIDIA GPU, this is expected — see
-  [The GPU is not in the temperature panel](#the-gpu-is-not-in-the-temperature-panel).
-- **`GpuQueryFailed` firing while everything looks fine.** The heartbeat is
-  stricter than an interactive `nvidia-smi`: it uses a timeout, so it reports a
-  GPU that is slow to answer as a failure. Check
-  `node_gpu_query_duration_seconds` before believing it.
-- **The port is open but the target is `down`.** Work through
-  [the firewall section](#firewalls-what-the-installer-can-and-cannot-tell-you):
-  confirm something is listening, then check packet filtering, then check for an
-  application firewall by stopping it. Also confirm `NODE_EXPORTER_LISTEN` matches
-  the port the server is actually dialling.
+- **`node_scrape_collector_success{collector="rapl"} == 0`** and similar. Those collectors are absent on most hardware and report 0 by design. The alerting rule is scoped to an allowlist of collectors that should always work.
+- **No `node_hwmon_*` for a chip you can read with `sensors`.** The hwmon collector needs permission to the chip; check the exporter's own error above. If the chip in question is the NVIDIA GPU, this is expected — see [host-heartbeat.md](host-heartbeat.md#the-gpu-is-not-in-the-temperature-panel).
+- **The port is open but the target is `down`.** Work through [the firewall section](#firewalls-what-the-installer-can-and-cannot-tell-you): confirm something is listening, then check packet filtering, then check for an application firewall by stopping it. Also confirm `NODE_EXPORTER_LISTEN` matches the port the server is actually dialling.
+
+Freeze, GPU and journal symptoms have their own section in [host-heartbeat.md](host-heartbeat.md#troubleshooting), and peer-probe symptoms in [peer-watchdog.md](peer-watchdog.md#troubleshooting).
 
 ## Uninstall
 
 ```bash
-sudo systemctl disable --now node-exporter nvidia-gpu-heartbeat.timer
-sudo rm -f /etc/systemd/system/node-exporter.service \
-           /etc/systemd/system/nvidia-gpu-heartbeat.{service,timer} \
-           /usr/local/bin/node_exporter /usr/local/bin/nvidia-gpu-heartbeat
+sudo systemctl disable --now node-exporter
+sudo rm -f /etc/systemd/system/node-exporter.service /usr/local/bin/node_exporter
 sudo systemctl daemon-reload
 ```
 
-The `node_exporter` service account, `/var/lib/node_exporter` and the firewall
-rule are left in place on purpose; remove them by hand if you are sure nothing
-else uses them. Remove its entry from the `Devices/` registry too, or Prometheus
-will keep trying to scrape a host that is gone.
+The `node_exporter` service account, `/var/lib/node_exporter` and the firewall rule are left in place on purpose; remove them by hand if you are sure nothing else uses them. Remove its entry from the `Devices/` registry too, or Prometheus will keep trying to scrape a host that is gone. To remove the heartbeat instead, see [host-heartbeat.md](host-heartbeat.md#uninstall); to remove the peer watchdog, see [peer-watchdog.md](peer-watchdog.md#uninstall).

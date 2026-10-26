@@ -1,0 +1,30 @@
+[Unit]
+Description=Run the host heartbeat every 15s
+Documentation=man:systemd.timer(5)
+
+[Timer]
+# OnUnitActiveSec alone is NOT a schedule. It is relative to the previous
+# activation of the unit, and on a freshly booted machine there is no previous
+# activation: systemd has no reference point, schedules nothing, and the timer
+# then reports "active" while doing nothing forever. OnActiveSec anchors the
+# first run to the timer's own start, which is what actually gets it going.
+#
+# Both belong together. OnUnitActiveSec then paces the following runs so a slow
+# run delays the next one instead of stacking.
+#
+# The gap this timer measures is the evidence that a machine stayed powered on
+# while this script did not run, so the interval sets the resolution of a freeze
+# report: with a 15s interval the shortest freeze that can be reported is 15s, and
+# a longer interval makes a shorter hang invisible rather than merely imprecise.
+OnActiveSec=15s
+OnUnitActiveSec=15s
+AccuracySec=1s
+# No Persistent=true: on resume we do not want a burst of catch-up runs. One run
+# immediately after a resume is what turns the overnight gap into a single
+# classified event instead of a queue of them.
+Persistent=false
+RandomizedDelaySec=0
+Unit=host-heartbeat.service
+
+[Install]
+WantedBy=timers.target

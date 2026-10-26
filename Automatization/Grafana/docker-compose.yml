@@ -1,12 +1,13 @@
-# Grafana + MySQL (external `mariadb` on db-net) + per-device dashboards.
+# Grafana + MySQL (external `mariadb` on db-net) + one fleet dashboard
+# (Host dropdown fed by a Prometheus query).
 # First admin user & password: admin - admin
 # Deploy/update via Portainer "Stack from Git" (folder Automatization/Grafana).
 #
 # A one-shot `bootstrap` service generates the provisioning files:
 #   - datasource "Prometheus" (uid=prometheus) and the "Infrastructure"
 #     provider are seeded only when missing/empty, so server-side edits survive;
-#   - one dashboard per device is regenerated from the Devices/ registry on
-#     every update (stale files are removed first).
+#   - the single "Infrastructure" dashboard is regenerated from the Devices/
+#     registry on every update (stale files are removed first).
 #
 # The scripts and the device registry are read from the cloned repository
 # (an absolute path, so Portainer CE resolves the bind):

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
-"""Grafana bootstrap: seed the datasource/provider and generate one dashboard
-per device from the Devices/ registry.
+"""Grafana bootstrap: seed the datasource/provider and generate the single
+Infrastructure dashboard from the Devices/ registry.
 
 Runs first in the Grafana stack (depends_on: service_completed_successfully).
 Mount layout:
@@ -9,9 +9,10 @@ Mount layout:
   /provisioning  provisioning output           (written under PATH_TO_CONTAINERS)
 
 The datasource and provider files are seeded only when missing/empty, so
-server-side edits survive an update. The per-device dashboards are always
-regenerated (stale files are deleted first), so adding/removing a device only
-means adding/removing one .env and updating the stack.
+server-side edits survive an update. The dashboard is always regenerated
+(stale files are deleted first), and the Battery/GPU sections render when any
+device sets the flag, so adding/removing a device only means
+adding/removing one .env and updating the stack.
 """
 
 import json
@@ -104,18 +105,20 @@ def generate_dashboards(devices):
     os.makedirs(DEVICE_DIR, exist_ok=True)
     for old in os.listdir(DEVICE_DIR):
         os.remove(os.path.join(DEVICE_DIR, old))
-    for name, battery, gpu in devices:
-        doc = dashboard.build(name, battery=battery, gpu=gpu)
-        path = os.path.join(DEVICE_DIR, f"{doc['uid']}.json")
-        with open(path, "w", encoding="utf-8") as fh:
-            json.dump(doc, fh, indent=2)
-            fh.write("\n")
-        rows = "base"
-        if battery:
-            rows += "+battery"
-        if gpu:
-            rows += "+gpu"
-        print(f"[bootstrap] dashboard {doc['uid']} (title {name!r}, rows {rows}) -> {path}")
+    battery = any(b for _, b, _ in devices)
+    gpu = any(g for _, _, g in devices)
+    doc = dashboard.build(battery=battery, gpu=gpu)
+    path = os.path.join(DEVICE_DIR, f"{doc['uid']}.json")
+    with open(path, "w", encoding="utf-8") as fh:
+        json.dump(doc, fh, indent=2)
+        fh.write("\n")
+    hosts = ", ".join(name for name, _, _ in devices)
+    rows = "base+memory"
+    if battery:
+        rows += "+battery"
+    if gpu:
+        rows += "+gpu"
+    print(f"[bootstrap] dashboard {doc['uid']} (hosts: {hosts}; sections {rows}) -> {path}")
 
 
 def main():
@@ -143,7 +146,7 @@ def main():
             "[bootstrap]        cloned repository, then Update the stack."
         )
     generate_dashboards(devices)
-    print(f"[bootstrap] dashboards OK: {len(devices)} device(s)")
+    print(f"[bootstrap] dashboards OK: 1 dashboard from {len(devices)} device(s)")
     print("[bootstrap] done")
 
 
